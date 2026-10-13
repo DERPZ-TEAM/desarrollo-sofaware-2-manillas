@@ -1,0 +1,49 @@
+
+# Archivos estaticos generados
+proyecto/staticfiles/
+
+# Secretos y configuracion local
+proyecto/.env
+proyecto/.env.*
+!proyecto/.env.example
+
+# Base de datos local y archivos subidos
+proyecto/db.sqlite3
+proyecto/media/
+
+# Archivos temporales de Python
+proyecto/__pycache__/
+proyecto/**/*.pyc
+proyecto/**/*.pyo
+
+# Respaldos y datos de prueba
+proyecto/respaldo*.json
+proyecto/*_importar.json
+proyecto/usuarios_prueba.json
+proyecto/perfiles_carritos.json
+
+# Archivos estaticos generados
+proyecto/staticfiles/
+
+# Secretos y configuracion local
+proyecto/.env
+proyecto/.env.*
+!proyecto/.env.example
+
+# Base de datos local y archivos subidos
+proyecto/db.sqlite3
+proyecto/media/
+
+# Archivos temporales de Python
+proyecto/__pycache__/
+proyecto/**/*.pyc
+proyecto/**/*.pyo
+
+# Respaldos y datos de prueba
+proyecto/respaldo*.json
+proyecto/*_importar.json
+proyecto/usuarios_prueba.json
+proyecto/perfiles_carritos.json
+
+# Archivos estaticos generados
+proyecto/staticfiles/

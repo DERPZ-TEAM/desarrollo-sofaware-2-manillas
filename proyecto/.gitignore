@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.env.*
+!.env.example
+respaldo*.json
+*_importar.json
+usuarios_prueba.json
+
+perfiles_carritos.json

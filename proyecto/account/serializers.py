@@ -174,14 +174,19 @@ class ProductoListSerializer(serializers.ModelSerializer):
             'imagen', 'imagen_url', 'activo', 'categoria', 'categoria_nombre',
         )
 
+
     def get_imagen_url(self, obj):
         if not obj.imagen:
             return None
-        request = self.context.get('request')
-        url = obj.imagen.url
-        if request:
-            return request.build_absolute_uri(url)
-        return url
+
+        nombre_archivo = obj.imagen.name.split('/')[-1]
+
+        base_storage = (
+            'https://sxuavqduvjlcwioijotz.supabase.co/'
+            'storage/v1/object/public/imagenes-productos/'
+    )
+
+        return base_storage + nombre_archivo
 
 
 class ProductoWriteSerializer(serializers.ModelSerializer):

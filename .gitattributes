@@ -1,0 +1,2 @@
+# Los scripts de shell deben tener saltos de línea Linux (LF) para que Render los ejecute
+*.sh text eol=lf

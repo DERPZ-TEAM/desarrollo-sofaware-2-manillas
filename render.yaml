@@ -1,0 +1,34 @@
+# Blueprint de Render: describe el servicio del backend como código.
+# Render -> New -> Blueprint -> seleccionar este repositorio.
+# Las variables marcadas sync: false se escriben a mano en el panel de Render.
+services:
+  - type: web
+    name: goldbracelets-api
+    runtime: python
+    rootDir: proyecto
+    buildCommand: bash build.sh
+    startCommand: gunicorn proyecto.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    healthCheckPath: /api/salud/
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: imagenes-productos
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CORS_ALLOWED_ORIGIN_REGEXES
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false

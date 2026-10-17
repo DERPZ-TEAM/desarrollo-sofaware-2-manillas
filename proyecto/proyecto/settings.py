@@ -135,16 +135,26 @@ def base_de_datos_desde_url(url):
 
     Es la misma idea de la librería dj-database-url, escrita a mano para
     que se entienda qué hace.
+
+    La contraseña puede traer símbolos como @ # / sin convertir (ej. la
+    clave "@Clave#1"): por eso separamos usuario y servidor en el ÚLTIMO "@"
+    en lugar de usar urlparse, que confundiría el "#" con el final de la URL.
     """
-    partes = urlparse(url)
-    if partes.scheme == 'sqlite':
+    esquema, separador, resto = url.partition('://')
+    if not separador:
+        raise ImproperlyConfigured('DATABASE_URL no tiene el formato motor://...')
+    if esquema == 'sqlite':
         # sqlite:///ruta/archivo.db  (solo para pruebas rápidas)
         return {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': unquote(partes.path[1:]) or str(BASE_DIR / 'db.sqlite3'),
+            'NAME': unquote(resto[1:]) or str(BASE_DIR / 'db.sqlite3'),
         }
-    if partes.scheme not in ('postgres', 'postgresql'):
-        raise ImproperlyConfigured(f'Motor de base de datos no soportado: {partes.scheme}')
+    if esquema not in ('postgres', 'postgresql'):
+        raise ImproperlyConfigured(f'Motor de base de datos no soportado: {esquema}')
+
+    credenciales, _, servidor = resto.rpartition('@')       # usuario:clave | host:puerto/bd?op
+    usuario, _, clave = credenciales.partition(':')
+    partes = urlparse(f'postgresql://{servidor}')            # el servidor ya no tiene símbolos raros
 
     opciones = {k: v[0] for k, v in parse_qs(partes.query).items()}
     host = partes.hostname or 'localhost'
@@ -153,8 +163,8 @@ def base_de_datos_desde_url(url):
     return {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': unquote(partes.path.lstrip('/')),
-        'USER': unquote(partes.username or ''),
-        'PASSWORD': unquote(partes.password or ''),
+        'USER': unquote(usuario),
+        'PASSWORD': unquote(clave),
         'HOST': host,
         'PORT': str(partes.port or 5432),
         'OPTIONS': opciones,

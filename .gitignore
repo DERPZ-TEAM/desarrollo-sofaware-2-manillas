@@ -1,8 +1,8 @@
+# Entornos virtuales de Python
+.venv/
+proyecdjango/
 
-# Archivos estaticos generados
-proyecto/staticfiles/
-
-# Secretos y configuracion local
+# Secretos y configuración local (NUNCA subir)
 proyecto/.env
 proyecto/.env.*
 !proyecto/.env.example
@@ -11,10 +11,10 @@ proyecto/.env.*
 proyecto/db.sqlite3
 proyecto/media/
 
-# Archivos temporales de Python
-proyecto/__pycache__/
-proyecto/**/*.pyc
-proyecto/**/*.pyo
+# Archivos generados
+proyecto/staticfiles/
+__pycache__/
+*.py[cod]
 
 # Respaldos y datos de prueba
 proyecto/respaldo*.json
@@ -22,28 +22,6 @@ proyecto/*_importar.json
 proyecto/usuarios_prueba.json
 proyecto/perfiles_carritos.json
 
-# Archivos estaticos generados
-proyecto/staticfiles/
-
-# Secretos y configuracion local
-proyecto/.env
-proyecto/.env.*
-!proyecto/.env.example
-
-# Base de datos local y archivos subidos
-proyecto/db.sqlite3
-proyecto/media/
-
-# Archivos temporales de Python
-proyecto/__pycache__/
-proyecto/**/*.pyc
-proyecto/**/*.pyo
-
-# Respaldos y datos de prueba
-proyecto/respaldo*.json
-proyecto/*_importar.json
-proyecto/usuarios_prueba.json
-proyecto/perfiles_carritos.json
-
-# Archivos estaticos generados
-proyecto/staticfiles/
+# Configuración local del editor
+.claude/launch.json
+.vscode/

@@ -40,6 +40,7 @@ class BaseAPITest(APITestCase):
 
     def setUp(self):
         cache.clear()   # reinicia el contador del límite de intentos de login
+        Producto.objects.all().delete()   # en PostgreSQL la migración 0008 carga el catálogo demo
         self.admin = User.objects.create_user('admin', 'admin@gb.com', 'AdminGold123', is_staff=True)
         self.cliente = User.objects.create_user('laura', 'laura@gb.com', 'Cliente123', first_name='Laura')
         self.cat = Categoria.objects.create(nombre='Pulseras')

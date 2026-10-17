@@ -18,6 +18,8 @@ Migraciones del proyecto:
 | `0004_...` | Pedidos, ítems de pedido, perfil (rol) |
 | `0005_...` | Renombró tablas de perfil y categoría |
 | `0006_campos_ficha_envio_reportes` | **Nueva (sprints 2-5):** ficha técnica (tipo de oro, quilates, peso, talla, elaboración), stock mínimo, datos de envío y pago, guía, descuento, dirección del perfil, índices y CHECK. Incluye un paso de datos que copia `total → subtotal` en pedidos antiguos |
+| `0007_reiniciar_contadores_id` | Pone los contadores automáticos de `id` en el valor más alto existente (los datos importados con JSON los habían dejado atrás y no se podían crear carritos ni pedidos) |
+| `0008_catalogo_demo` | Carga 29 piezas de demostración en 7 categorías con su imagen (`account/datos_demo/catalogo/`). Solo corre una vez y no toca productos existentes |
 
 > ✅ La migración 0006 **solo agrega** columnas con valores por defecto: no borra ni modifica datos existentes. Es segura sobre la base de producción.
 

@@ -12,7 +12,7 @@ Con este manejador, el frontend SIEMPRE recibe un JSON así:
 """
 import logging
 
-from django.db import DatabaseError
+from django.db import DatabaseError, IntegrityError
 from django.db.models import ProtectedError
 from django.http import Http404
 from rest_framework import status
@@ -67,6 +67,13 @@ def manejador_global_errores(exc, context):
 
     # Errores inesperados: se registran en el log y se responde un 500 limpio
     vista = context.get('view').__class__.__name__ if context.get('view') else '?'
+    if isinstance(exc, IntegrityError):
+        # La BD rechazó el dato (ej. llave duplicada): no es un problema de conexión
+        logger.exception('Error de integridad en %s', vista)
+        return Response(
+            {'detail': 'No se pudo guardar porque entra en conflicto con un registro existente.'},
+            status=status.HTTP_409_CONFLICT,
+        )
     if isinstance(exc, DatabaseError):
         logger.exception('Error de base de datos en %s', vista)
         return Response(

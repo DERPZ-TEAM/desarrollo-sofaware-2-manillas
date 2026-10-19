@@ -7,8 +7,8 @@ import { money } from '../../utils/format'
 
 const METODOS = [
   { value: 'contraentrega', label: 'Pago contra entrega', desc: 'Pagas en efectivo al recibir.' },
-  { value: 'transferencia', label: 'Transferencia bancaria', desc: 'Te enviamos los datos de la cuenta.' },
-  { value: 'nequi', label: 'Nequi / Daviplata', desc: 'Pago desde tu celular.' },
+  { value: 'transferencia', label: 'Transferencia bancaria', desc: 'Te contactamos con los datos para pagar.' },
+  { value: 'nequi', label: 'Nequi / Daviplata', desc: 'Te contactamos con el número para pagar.' },
   { value: 'tarjeta', label: 'Tarjeta (simulado)', desc: 'Demostración: no se cobra dinero real.' },
 ]
 

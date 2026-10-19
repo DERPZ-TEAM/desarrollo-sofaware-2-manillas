@@ -11,12 +11,13 @@ Con este manejador, el frontend SIEMPRE recibe un JSON así:
     }
 """
 import logging
+import math
 
 from django.db import DatabaseError, IntegrityError
 from django.db.models import ProtectedError
 from django.http import Http404
 from rest_framework import status
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import Throttled, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
@@ -54,6 +55,13 @@ def manejador_global_errores(exc, context):
 
     if isinstance(exc, Http404):
         return Response({'detail': 'El recurso solicitado no existe.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if isinstance(exc, Throttled):
+        minutos = max(1, math.ceil((exc.wait or 60) / 60))
+        return Response(
+            {'detail': f'Demasiados intentos. Espera {minutos} minuto(s) y vuelve a intentarlo.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
 
     # Errores que DRF ya sabe manejar (validación, permisos, autenticación...)
     respuesta = exception_handler(exc, context)

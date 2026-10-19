@@ -32,7 +32,7 @@ proyecto/
     ├── management/commands/seed_goldbracelets.py   # datos iniciales
     ├── migrations/            # historial de cambios de la BD
     ├── static/images/         # fotos de ejemplo para el seed
-    └── tests/test_api.py      # 24 pruebas automáticas
+    └── tests/test_api.py      # 30 pruebas automáticas
 ```
 
 ---
@@ -235,7 +235,7 @@ Producto.objects.exclude(pk__in=vendidos)     # NOT IN (subconsulta)
 `python manage.py seed_goldbracelets` crea admin, cliente demo, 5 categorías y 6 productos de ejemplo **solo si no hay productos**. Se ejecuta en cada despliegue (`build.sh`) sin duplicar nada porque usa `get_or_create`.
 
 ## 12. `account/tests/test_api.py` — pruebas
-`python manage.py test account` crea una BD temporal, corre 24 pruebas y la borra. Cubren: registro, login por correo, flujos separados admin/cliente, logout con lista negra, recuperación de contraseña, permisos, CRUD con imagen, validaciones, filtros, stock agotado, ajuste al stock, checkout con descuento, rollback cuando falta stock, máquina de estados, devolución de stock al cancelar, reportes y alertas.
+`python manage.py test account` crea una BD temporal, corre 30 pruebas y la borra. Cubren: registro, login por correo, flujos separados admin/cliente, logout con lista negra, recuperación de contraseña, permisos, CRUD con imagen, validaciones, filtros, stock agotado, ajuste al stock, checkout con descuento, rollback cuando falta stock, máquina de estados, devolución de stock al cancelar, reportes y alertas.
 
 ## 13. Comandos útiles
 

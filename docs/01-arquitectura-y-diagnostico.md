@@ -119,7 +119,7 @@ y así puede mostrar el mensaje general arriba y cada error debajo de su campo.
 
 ### 4.4 Otras prácticas
 - Configuración por **variables de entorno** (nada secreto en el código).
-- **Pruebas automáticas** (`account/tests/test_api.py`, 24 pruebas).
+- **Pruebas automáticas** (`account/tests/test_api.py`, 30 pruebas).
 - Consultas optimizadas: `select_related` / `prefetch_related` evitan el problema "N+1" (hacer 100 consultas en vez de 1).
 - Índices en columnas de búsqueda (precio, estado, categoría).
 - Endpoint de salud `/api/salud/` para el monitoreo de Render.

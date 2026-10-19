@@ -20,10 +20,11 @@ from ..serializers import (
 )
 
 
-def _carrito_json(request, carrito, aviso=None, codigo=status.HTTP_200_OK):
+def _carrito_json(request, carrito, aviso=None, codigo=status.HTTP_200_OK, advertencia=False):
     datos = CarritoSerializer(carrito, context={'request': request}).data
     if aviso:
         datos['detail'] = aviso
+        datos['advertencia'] = advertencia   # True = se ajustó algo (ej. cantidad al stock)
     return Response(datos, status=codigo)
 
 
@@ -48,7 +49,7 @@ def carrito_view(request):
     carrito, aviso = services.agregar_al_carrito(
         request.user, serializer.validated_data['producto_id'], serializer.validated_data['cantidad']
     )
-    return _carrito_json(request, carrito, aviso or 'Producto agregado al carrito.')
+    return _carrito_json(request, carrito, aviso or 'Producto agregado al carrito.', advertencia=bool(aviso))
 
 
 @api_view(['PATCH', 'DELETE'])
@@ -67,7 +68,7 @@ def item_carrito_view(request, item_id):
     except (TypeError, ValueError):
         raise ErrorDeNegocio('Cantidad inválida.')
     carrito, aviso = services.cambiar_cantidad_item(request.user, item_id, cantidad)
-    return _carrito_json(request, carrito, aviso)
+    return _carrito_json(request, carrito, aviso, advertencia=bool(aviso))
 
 
 @api_view(['POST'])

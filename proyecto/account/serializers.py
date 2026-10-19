@@ -513,7 +513,8 @@ class PedidoAdminUpdateSerializer(serializers.Serializer):
     def validate(self, attrs):
         if not attrs:
             raise serializers.ValidationError('No enviaste ningún cambio.')
-        if attrs.get('estado') == Pedido.ENVIADO:
+        puede_enviar = self.instance is None or self.instance.puede_cambiar_a(Pedido.ENVIADO)
+        if attrs.get('estado') == Pedido.ENVIADO and puede_enviar:
             guia = attrs.get('numero_guia', self.instance.numero_guia if self.instance else '')
             if not (guia or '').strip():
                 raise serializers.ValidationError(

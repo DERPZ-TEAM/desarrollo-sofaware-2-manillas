@@ -83,6 +83,7 @@ export function AuthProvider({ children }) {
     const data = await api('/auth/registro/', { method: 'POST', body: payload, auth: false })
     tokens.save(data)
     setUser(data.user)
+    setAviso(data.detail || '¡Registro exitoso! Bienvenida(o) a GoldBracelets.')
     return data
   }, [])
 

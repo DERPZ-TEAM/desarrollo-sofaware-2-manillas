@@ -18,6 +18,7 @@ export default function Catalog() {
   const [categorias, setCategorias] = useState([])
   const [opciones, setOpciones] = useState({ tipos_oro: [], tallas: [] })
   const [error, setError] = useState('')
+  const [verFiltros, setVerFiltros] = useState(false)   // solo afecta a celulares
   const { add, addingId, mensaje, clearMensaje } = useAddToCart()
 
   useEffect(() => {
@@ -45,9 +46,13 @@ export default function Catalog() {
       return
     }
     setForm(datos)
+    setError('')
     const limpio = Object.fromEntries(Object.entries(datos).filter(([k, v]) => v && !(k === 'orden' && v === 'recientes')))
     setParams(limpio)
   }
+
+  // Cuántos filtros están aplicados (para mostrarlo en el botón de celular)
+  const activos = [...params.keys()].filter((k) => k !== 'orden').length
 
   function limpiar() {
     setForm(FILTROS_VACIOS)
@@ -61,8 +66,13 @@ export default function Catalog() {
         <h1>Todas nuestras piezas</h1>
       </div>
 
+      <button type="button" className="btn btn-ghost filters-toggle" onClick={() => setVerFiltros(!verFiltros)}>
+        {verFiltros ? 'Ocultar filtros' : 'Filtrar y ordenar'}
+        {activos > 0 && <span className="filters-count">{activos}</span>}
+      </button>
+
       <div className="catalog">
-        <aside className="filters">
+        <aside className={`filters ${verFiltros ? 'open' : ''}`}>
           <form onSubmit={aplicar}>
             <label className="field">
               <span className="field-label">Buscar por nombre</span>
@@ -93,7 +103,7 @@ export default function Catalog() {
 
             <label className="field">
               <span className="field-label">Tipo de oro</span>
-              <select value={form.tipo_oro} onChange={(e) => set('tipo_oro', e.target.value)}>
+              <select value={form.tipo_oro} onChange={(e) => aplicar(null, { tipo_oro: e.target.value })}>
                 <option value="">Todos</option>
                 {opciones.tipos_oro.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
@@ -101,7 +111,7 @@ export default function Catalog() {
 
             <label className="field">
               <span className="field-label">Talla</span>
-              <select value={form.talla} onChange={(e) => set('talla', e.target.value)}>
+              <select value={form.talla} onChange={(e) => aplicar(null, { talla: e.target.value })}>
                 <option value="">Todas</option>
                 {opciones.tallas.map((t) => <option key={t} value={t}>{t} cm</option>)}
               </select>
@@ -109,7 +119,7 @@ export default function Catalog() {
 
             <label className="field">
               <span className="field-label">Ordenar por</span>
-              <select value={form.orden} onChange={(e) => set('orden', e.target.value)}>
+              <select value={form.orden} onChange={(e) => aplicar(null, { orden: e.target.value })}>
                 <option value="recientes">Más recientes</option>
                 <option value="precio_asc">Precio: menor a mayor</option>
                 <option value="precio_desc">Precio: mayor a menor</option>
@@ -118,11 +128,11 @@ export default function Catalog() {
             </label>
 
             <label className="check">
-              <input type="checkbox" checked={form.disponibles === 'true'} onChange={(e) => set('disponibles', e.target.checked ? 'true' : '')} />
+              <input type="checkbox" checked={form.disponibles === 'true'} onChange={(e) => aplicar(null, { disponibles: e.target.checked ? 'true' : '' })} />
               Solo disponibles
             </label>
 
-            <button className="btn btn-dark btn-block">Aplicar filtros</button>
+            <button className="btn btn-dark btn-block">Buscar</button>
             <button type="button" className="btn btn-link btn-block" onClick={limpiar}>Limpiar</button>
           </form>
         </aside>

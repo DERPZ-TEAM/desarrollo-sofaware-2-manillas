@@ -273,3 +273,48 @@ class LogicaTests(BaseAPITest):
         self.assertEqual(calcular_totales([(Decimal('10'), 6)])['porcentaje_descuento'], 5)
         self.assertEqual(calcular_totales([(Decimal('10'), 12)])['porcentaje_descuento'], 10)
         self.assertEqual(calcular_totales([(Decimal('10'), 30)])['porcentaje_descuento'], 15)
+
+
+class PruebaCompletaTests(BaseAPITest):
+    """Casos encontrados en la prueba completa de la página (octubre 2026)."""
+
+    def test_filtro_categoria_no_numerica(self):
+        r = self.client.get('/api/productos/?categoria=abc')
+        self.assertEqual(r.status_code, 400)
+
+    def test_login_usuario_sin_distinguir_mayusculas(self):
+        self.login('LAURA', 'Cliente123')
+
+    def test_cambiar_password_cierra_otras_sesiones(self):
+        otra_sesion = self.login('laura', 'Cliente123')
+        self.login('laura', 'Cliente123')
+        r = self.client.post('/api/auth/password/cambiar/', {
+            'password_actual': 'Cliente123', 'password': 'NuevaClave2026', 'password2': 'NuevaClave2026',
+        }, format='json')
+        self.assertEqual(r.status_code, 200)
+        r = self.client.post('/api/auth/refresh/', {'refresh': otra_sesion['refresh']}, format='json')
+        self.assertEqual(r.status_code, 401)
+
+    def test_aviso_de_cantidad_ajustada_es_advertencia(self):
+        self.login('laura', 'Cliente123')
+        r = self.client.post('/api/carrito/', {'producto_id': self.prod.id, 'cantidad': 50}, format='json')
+        self.assertTrue(r.data['advertencia'])
+        r = self.client.post('/api/carrito/', {'producto_id': self.prod.id, 'cantidad': 0}, format='json')
+        self.assertEqual(r.status_code, 400)
+
+    def test_destacados_variados_sin_ventas(self):
+        otra = Categoria.objects.create(nombre='Relojes')
+        for i in range(3):
+            Producto.objects.create(nombre=f'Reloj {i}', descripcion='Reloj de prueba dorado',
+                                    precio=Decimal('100'), stock=5, categoria=otra)
+        r = self.client.get('/api/productos/destacados/')
+        categorias = {p['categoria_nombre'] for p in r.data}
+        self.assertEqual(categorias, {'Pulseras', 'Relojes'})
+
+    def test_pendiente_a_enviado_explica_la_transicion(self):
+        self.login('laura', 'Cliente123')
+        self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
+        pedido = self.client.post('/api/checkout/', CompraTests.ENVIO, format='json').data['id']
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.client.patch(f'/api/admin/pedidos/{pedido}/', {'estado': 'enviado'}, format='json')
+        self.assertIn('No se puede pasar', r.data['detail'])

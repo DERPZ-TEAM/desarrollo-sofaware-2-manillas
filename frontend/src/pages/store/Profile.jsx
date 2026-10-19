@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import { Alert, EmptyState, Field, Loader, StatusBadge } from '../../components/ui'
 import { useAuth } from '../../context/AuthContext'
@@ -7,7 +7,8 @@ import { fecha, money } from '../../utils/format'
 
 /** Mi cuenta: datos personales (HU-US-004), contraseña e historial de pedidos (HU-PE-023). */
 export default function Profile() {
-  const { user, updateUser } = useAuth()
+  const { user, updateUser, logout } = useAuth()
+  const navigate = useNavigate()
   const [tab, setTab] = useState('pedidos')
   const [pedidos, setPedidos] = useState(null)
   const [form, setForm] = useState({
@@ -43,9 +44,10 @@ export default function Profile() {
     e.preventDefault()
     setErrors({})
     try {
-      const data = await api('/auth/password/cambiar/', { method: 'POST', body: pass })
-      setPass({ password_actual: '', password: '', password2: '' })
-      setMsg({ type: 'ok', text: data.detail })
+      await api('/auth/password/cambiar/', { method: 'POST', body: pass })
+      // El backend cerró todas las sesiones: pedimos entrar con la contraseña nueva
+      await logout('Contraseña actualizada. Inicia sesión con tu nueva contraseña.')
+      navigate('/ingresar')
     } catch (err) {
       setErrors(err.fields)
       setMsg({ type: 'error', text: err.message })

@@ -295,6 +295,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'login': '10/minute',
         'recuperacion': '5/hour',
+        'restablecer': '20/hour',
     },
 }
 

@@ -12,7 +12,7 @@ del CRUD (Create, Read, Update, Delete):
 """
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, F, Q, Sum
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -29,7 +29,7 @@ class CategoriaViewSet(viewsets.ModelViewSet):
     permission_classes = [LecturaPublicaEscrituraAdmin]
 
     def get_queryset(self):
-        qs = Categoria.objects.all()
+        qs = Categoria.objects.order_by('nombre')
         if es_admin(self.request.user):
             return qs.annotate(total_productos=Count('productos'))
         # Clientes: solo categorías activas y conteo de productos visibles
@@ -75,6 +75,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             qs = qs.filter(activo=p['activo'] == 'true')
 
         if p.get('categoria'):
+            if not str(p['categoria']).isdigit():
+                raise ErrorDeNegocio('La categoría seleccionada no es válida.')
             qs = qs.filter(categoria_id=p['categoria'])
 
         q = (p.get('q') or '').strip()                       # HU-VE-013 búsqueda por nombre
@@ -144,13 +146,28 @@ class ProductoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='destacados')
     def destacados(self, request):
         """GET /api/productos/destacados/ -> los más vendidos visibles (para la portada)"""
-        qs = (
+        candidatos = list(
             self.get_queryset()
+            .filter(stock__gt=0)
             .annotate(total_vendido=Sum('items_pedido__cantidad',
                                         filter=~Q(items_pedido__pedido__estado=Pedido.CANCELADO)))
-            .order_by('-total_vendido', '-creado')[:4]
+            .order_by(F('total_vendido').desc(nulls_last=True), '-creado')
         )
-        return Response(ProductoListSerializer(qs, many=True, context={'request': request}).data)
+        # Primero los más vendidos; para completar 4 tomamos una pieza por categoría,
+        # así la portada no muestra una sola colección cuando aún no hay ventas.
+        elegidos, categorias_usadas = [], set()
+        for producto in candidatos:
+            if producto.total_vendido or producto.categoria_id not in categorias_usadas:
+                elegidos.append(producto)
+                categorias_usadas.add(producto.categoria_id)
+            if len(elegidos) == 4:
+                break
+        for producto in candidatos:          # si hay menos de 4 categorías, rellenamos
+            if len(elegidos) == 4:
+                break
+            if producto not in elegidos:
+                elegidos.append(producto)
+        return Response(ProductoListSerializer(elegidos, many=True, context={'request': request}).data)
 
     @action(detail=False, methods=['get'], url_path='opciones')
     def opciones(self, request):

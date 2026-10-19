@@ -147,7 +147,7 @@ El plan gratis de Render "duerme" el servicio tras 15 minutos sin uso; la primer
 ## H. Calidad
 
 **40. ¿Cómo saben que funciona?**
-24 pruebas automáticas (`python manage.py test account`) que cubren registro, login, permisos, CRUD con imagen, filtros, carrito, checkout con descuento, rollback por falta de stock, estados de pedido, cancelación con devolución de stock y reportes. Además pruebas manuales del flujo completo en el navegador.
+30 pruebas automáticas (`python manage.py test account`) que cubren registro, login, permisos, CRUD con imagen, filtros, carrito, checkout con descuento, rollback por falta de stock, estados de pedido, cancelación con devolución de stock y reportes. Además pruebas manuales del flujo completo en el navegador.
 
 ---
 

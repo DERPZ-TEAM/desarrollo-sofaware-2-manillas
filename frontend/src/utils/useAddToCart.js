@@ -26,7 +26,7 @@ export default function useAddToCart() {
     try {
       const carrito = await api('/carrito/', { method: 'POST', body: { producto_id: producto.id, cantidad } })
       setCartCount(carrito.resumen.cantidad_items)
-      setMensaje({ type: 'ok', text: carrito.detail || 'Producto agregado.' })
+      setMensaje({ type: carrito.advertencia ? 'info' : 'ok', text: carrito.detail || 'Producto agregado.' })
     } catch (e) {
       setMensaje({ type: 'error', text: e.message })
     } finally {

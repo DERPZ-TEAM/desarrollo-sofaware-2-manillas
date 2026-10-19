@@ -27,6 +27,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from ..permissions import es_admin
@@ -49,8 +50,23 @@ class LimiteLogin(AnonRateThrottle):
     scope = 'login'
 
 
+class LimiteRestablecer(AnonRateThrottle):
+    """Guardar la contraseña nueva: más margen, por si el usuario se equivoca al escribirla."""
+    scope = 'restablecer'
+
+
 class LimiteRecuperacion(AnonRateThrottle):
     scope = 'recuperacion'
+
+
+def cerrar_todas_las_sesiones(user):
+    """Invalida todos los refresh tokens del usuario (en todos sus dispositivos).
+
+    Se usa al cambiar o recuperar la contraseña: si alguien tenía la sesión
+    abierta con la contraseña vieja, ya no podrá renovarla.
+    """
+    for token in OutstandingToken.objects.filter(user=user):
+        BlacklistedToken.objects.get_or_create(token=token)
 
 
 def tokens_para(user):
@@ -83,10 +99,10 @@ def _login(request, solo_admin):
     password = serializer.validated_data['password']
 
     # Si escribió un correo, buscamos a qué usuario pertenece (HU-AU-002)
-    username = identificador
-    if '@' in identificador:
-        dueño = User.objects.filter(email__iexact=identificador).first()
-        username = dueño.username if dueño else identificador
+    # Buscamos al dueño sin distinguir mayúsculas (igual que se valida en el registro)
+    filtro = {'email__iexact': identificador} if '@' in identificador else {'username__iexact': identificador}
+    dueño = User.objects.filter(**filtro).first()
+    username = dueño.username if dueño else identificador
 
     user = authenticate(request, username=username, password=password)
     if user is None:
@@ -156,6 +172,7 @@ def cambiar_password_view(request):
     serializer.is_valid(raise_exception=True)
     request.user.set_password(serializer.validated_data['password'])
     request.user.save(update_fields=['password'])
+    cerrar_todas_las_sesiones(request.user)
     return Response({'detail': 'Contraseña actualizada. Vuelve a iniciar sesión.'})
 
 
@@ -198,7 +215,7 @@ def solicitar_recuperacion_view(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-@throttle_classes([LimiteRecuperacion])
+@throttle_classes([LimiteRestablecer])
 def confirmar_recuperacion_view(request):
     """POST /api/auth/password/restablecer/  (HU-US-003 paso 2)"""
     serializer = ConfirmarRecuperacionSerializer(data=request.data)
@@ -219,4 +236,5 @@ def confirmar_recuperacion_view(request):
         return Response({'detail': exc.messages[0], 'errors': {'password': exc.messages}}, status=400)
     user.set_password(datos['password'])
     user.save(update_fields=['password'])
+    cerrar_todas_las_sesiones(user)
     return Response({'detail': 'Contraseña actualizada. Ya puedes iniciar sesión.'})

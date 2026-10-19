@@ -6,6 +6,14 @@ import { fecha, money } from '../../utils/format'
 
 const PASOS = ['pendiente', 'confirmado', 'enviado', 'entregado']
 
+// Qué debe hacer el cliente según el método de pago elegido
+const INSTRUCCIONES_PAGO = {
+  contraentrega: 'Pagas en efectivo cuando recibas tu pedido.',
+  transferencia: 'Un asesor te contactará al teléfono registrado con los datos de la cuenta. Tu pedido se confirma cuando recibamos el pago.',
+  nequi: 'Un asesor te contactará al teléfono registrado con el número Nequi / Daviplata. Tu pedido se confirma cuando recibamos el pago.',
+  tarjeta: 'Pago de demostración: no se realizó ningún cobro real.',
+}
+
 /** Comprobante / detalle de un pedido (HU-VE-022, HU-PE-023). Se puede imprimir. */
 export default function OrderDetail() {
   const { id } = useParams()
@@ -61,6 +69,9 @@ export default function OrderDetail() {
           <div>
             <h4>Pago</h4>
             <p>{pedido.metodo_pago_display}</p>
+            {pedido.estado === 'pendiente' && INSTRUCCIONES_PAGO[pedido.metodo_pago] && (
+              <p className="hint-box">{INSTRUCCIONES_PAGO[pedido.metodo_pago]}</p>
+            )}
             {pedido.notas && <><h4>Notas</h4><p>{pedido.notas}</p></>}
           </div>
         </div>

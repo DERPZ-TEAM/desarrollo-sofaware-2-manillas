@@ -36,7 +36,7 @@ export default function Product() {
     ['Elaboración', p.elaboracion_display],
     ['Categoría', p.categoria_nombre],
   ]
-  const faltantes = ficha.filter(([, v]) => !v).length
+  const faltantes = ficha.filter(([, v]) => !v).map(([k]) => k.toLowerCase())
   const agotado = p.stock === 0
 
   return (
@@ -56,7 +56,7 @@ export default function Product() {
         </p>
 
         <Alert type={mensaje.type} onClose={clearMensaje}>
-          {mensaje.text}{mensaje.type === 'ok' && <> · <Link to="/carrito">Ver carrito</Link></>}
+          {mensaje.text}{mensaje.type !== 'error' && <> · <Link to="/carrito">Ver carrito</Link></>}
         </Alert>
 
         <div className="buy-row">
@@ -73,11 +73,11 @@ export default function Product() {
         <div className="spec-sheet">
           <h3>Ficha técnica</h3>
           <dl>
-            {ficha.map(([k, v]) => (
-              <div key={k}><dt>{k}</dt><dd>{v || <span className="muted">No registrado</span>}</dd></div>
+            {ficha.filter(([, v]) => v).map(([k, v]) => (
+              <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
             ))}
           </dl>
-          {faltantes > 0 && <p className="muted small">Algunos datos de esta pieza aún no han sido registrados.</p>}
+          {faltantes.length > 0 && <p className="muted small">Datos no registrados para esta pieza: {faltantes.join(', ')}.</p>}
         </div>
       </div>
     </div>

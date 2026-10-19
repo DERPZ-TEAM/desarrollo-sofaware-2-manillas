@@ -101,4 +101,4 @@ npm run dev
 
 Abre http://localhost:5173 · Cliente demo: `cliente` / `Cliente123` · Admin: `admin` / `AdminGold123` (entra por `/admin/ingresar`).
 
-Pruebas automáticas del backend: `python manage.py test account` (24 pruebas).
+Pruebas automáticas del backend: `python manage.py test account` (30 pruebas).

@@ -52,7 +52,7 @@ export default function StoreLayout() {
         </div>
       </header>
 
-      {aviso && <div className="wrap" style={{ paddingTop: 16 }}><Alert type="info" onClose={() => setAviso('')}>{aviso}</Alert></div>}
+      {aviso && <div className="wrap" style={{ paddingTop: 16 }}><Alert type={/exitoso|bienvenid/i.test(aviso) ? 'ok' : 'info'} onClose={() => setAviso('')}>{aviso}</Alert></div>}
 
       <main className="store-main"><Outlet /></main>
 

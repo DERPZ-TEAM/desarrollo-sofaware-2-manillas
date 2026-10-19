@@ -8,13 +8,16 @@ Crea (sin duplicar si ya existen):
   - Las categorías base
   - Brazaletes de ejemplo SOLO si la tabla de productos está vacía
 
-Las contraseñas se toman de variables de entorno si existen
-(SEED_ADMIN_PASSWORD / SEED_CLIENTE_PASSWORD), para no dejarlas fijas en producción.
+Contraseñas de los usuarios demo:
+  - Local: SEED_ADMIN_PASSWORD / SEED_CLIENTE_PASSWORD o, si no existen, las de ejemplo.
+  - Producción (DEBUG=False): SOLO las variables de entorno. Sin ellas no se crean
+    los usuarios demo, y si alguno aún tiene la clave de ejemplo se bloquea.
 """
 import os
 from decimal import Decimal
 from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files import File
 from django.core.management.base import BaseCommand
@@ -39,31 +42,57 @@ PRODUCTOS_DEMO = [
 class Command(BaseCommand):
     help = 'Crea administrador, cliente demo, categorías y brazaletes de ejemplo.'
 
+    def _clave(self, variable, clave_demo):
+        """Contraseña para un usuario demo.
+
+        - Local (DEBUG=True): usa la variable de entorno o la clave de ejemplo.
+        - Producción: SOLO la variable de entorno. Sin ella devuelve None y el
+          usuario no se crea, porque la clave de ejemplo está publicada en la
+          documentación y cualquiera podría usarla.
+        """
+        return os.environ.get(variable) or (clave_demo if settings.DEBUG else None)
+
+    def _bloquear_si_clave_publica(self, username, clave_demo):
+        """En producción, deja sin contraseña a una cuenta que aún use la clave de ejemplo."""
+        user = User.objects.filter(username=username).first()
+        if user and not settings.DEBUG and user.check_password(clave_demo):
+            user.set_unusable_password()
+            user.save(update_fields=['password'])
+            self.stdout.write(self.style.WARNING(
+                f'  La cuenta "{username}" tenía la contraseña de ejemplo: se dejó sin contraseña.'
+            ))
+
     @transaction.atomic
     def handle(self, *args, **options):
-        clave_admin = os.environ.get('SEED_ADMIN_PASSWORD', 'AdminGold123')
-        clave_cliente = os.environ.get('SEED_CLIENTE_PASSWORD', 'Cliente123')
+        clave_admin = self._clave('SEED_ADMIN_PASSWORD', 'AdminGold123')
+        clave_cliente = self._clave('SEED_CLIENTE_PASSWORD', 'Cliente123')
 
-        admin, creado = User.objects.get_or_create(
-            username='admin',
-            defaults={'email': 'admin@goldbracelets.com', 'first_name': 'Ana', 'last_name': 'Gestión'},
-        )
-        admin.is_staff = True
-        admin.is_superuser = True
-        if creado or os.environ.get('SEED_ADMIN_PASSWORD'):
-            admin.set_password(clave_admin)
-        admin.save()   # la señal pone rol=admin en el Perfil
-
-        cliente, creado = User.objects.get_or_create(
-            username='cliente',
-            defaults={'email': 'cliente@goldbracelets.com', 'first_name': 'Laura', 'last_name': 'Pérez'},
-        )
-        if creado:
-            cliente.set_password(clave_cliente)
-            cliente.save()
-            Perfil.objects.filter(usuario=cliente).update(
-                telefono='3001234567', direccion='Calle 10 # 5-20', ciudad='Cali', departamento='Valle del Cauca',
+        if clave_admin:
+            admin, creado = User.objects.get_or_create(
+                username='admin',
+                defaults={'email': 'admin@goldbracelets.com', 'first_name': 'Ana', 'last_name': 'Gestión'},
             )
+            admin.is_staff = True
+            admin.is_superuser = True
+            if creado or os.environ.get('SEED_ADMIN_PASSWORD'):
+                admin.set_password(clave_admin)
+            admin.save()   # la señal pone rol=admin en el Perfil
+        else:
+            self._bloquear_si_clave_publica('admin', 'AdminGold123')
+
+        if clave_cliente:
+            cliente, creado = User.objects.get_or_create(
+                username='cliente',
+                defaults={'email': 'cliente@goldbracelets.com', 'first_name': 'Laura', 'last_name': 'Pérez'},
+            )
+            if creado:
+                cliente.set_password(clave_cliente)
+                cliente.save()
+                Perfil.objects.filter(usuario=cliente).update(
+                    telefono='3001234567', direccion='Calle 10 # 5-20', ciudad='Cali', departamento='Valle del Cauca',
+                )
+        else:
+            self._bloquear_si_clave_publica('cliente', 'Cliente123')
 
         categorias = {}
         for i, nombre in enumerate(['Pulseras tejidas', 'Brazaletes', 'Cadenas', 'Aretes', 'Anillos'], start=1):

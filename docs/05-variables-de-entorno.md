@@ -33,8 +33,8 @@ Dónde se escriben:
 | `IMAGEN_MAX_MB` | `5` | `5` | No | Tamaño máximo de imagen |
 | `JWT_ACCESS_MINUTOS` | `30` | `30` | No | Duración del token access |
 | `JWT_REFRESH_DIAS` | `1` | `1` | No | Duración del token refresh |
-| `SEED_ADMIN_PASSWORD` | — | clave fuerte para el usuario `admin` | Recomendada | Si existe, el seed fija esa clave al admin en cada despliegue |
-| `SEED_CLIENTE_PASSWORD` | — | (opcional) | No | Clave del cliente demo al crearlo |
+| `SEED_ADMIN_PASSWORD` | — | clave fuerte para el usuario `admin` | Opcional | En producción el usuario `admin` de demostración **solo existe si defines esta variable** (se le pone esa clave en cada despliegue). Sin ella, si existe con la clave de ejemplo, se bloquea |
+| `SEED_CLIENTE_PASSWORD` | — | (opcional) | No | Igual que la anterior para el usuario `cliente` de demostración |
 | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` | — | ej. Gmail: `smtp.gmail.com`, `587`, correo, *contraseña de aplicación*, `True` | No | Para enviar correos reales de recuperación |
 | `DEFAULT_FROM_EMAIL` | — | `GoldBracelets <tucorreo@gmail.com>` | No | Remitente |
 | `MOSTRAR_ENLACE_RECUPERACION` | `True` (automático con DEBUG) | `True` solo para la demo sin correo | No | Devuelve el enlace de recuperación en la respuesta |

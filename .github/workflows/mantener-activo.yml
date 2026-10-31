@@ -1,0 +1,22 @@
+# Mantiene despierto el backend: Render (plan gratis) lo apaga tras ~15 minutos sin
+# visitas. Esta tarea lo visita cada 10 minutos. /api/salud/ también consulta la base
+# de datos, así que además evita que Supabase pause el proyecto por inactividad.
+# GitHub puede retrasar estas tareas varios minutos: la página igual sabe esperar
+# (ver frontend/src/api/client.js).
+name: Mantener activo el servidor
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:      # permite ejecutarla a mano desde la pestaña Actions
+
+jobs:
+  visitar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Visitar /api/salud/
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+               --retry 5 --retry-delay 15 --retry-all-errors \
+               https://desarrollo-sofaware-2-manillas.onrender.com/api/salud/

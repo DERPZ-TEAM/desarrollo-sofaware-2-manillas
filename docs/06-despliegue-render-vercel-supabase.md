@@ -136,6 +136,15 @@ que devuelve siempre `index.html` y React muestra la pantalla correcta.
 | CORS bloqueado | Origen no permitido | Ver doc 03, sección 4 |
 | Primera carga lenta (~50 s) | Plan gratis de Render se duerme | Abrir `/api/salud/` 1 minuto antes de presentar |
 
+## Disponibilidad: el "sueño" del plan gratis
+
+El plan gratis de Render **apaga el backend tras unos 15 minutos sin visitas** y tarda cerca de un minuto en despertar. Para manejarlo hay dos capas:
+
+1. **La página sabe esperar** (`frontend/src/api/client.js`): si el servidor no responde, muestra "Estamos activando el servidor" y espera a `/api/salud/`. Luego repite solo las consultas y los inicios de sesión. Una compra **nunca** se repite sola, para no crear pedidos dobles.
+2. **Tarea automática** (`.github/workflows/mantener-activo.yml`): GitHub Actions visita `/api/salud/` cada 10 minutos. Esa ruta también consulta la base de datos, lo que evita que Supabase pause el proyecto por inactividad. Se puede ver y ejecutar a mano en la pestaña **Actions** del repositorio.
+
+**Límites honestos:** GitHub puede retrasar las tareas programadas y las desactiva tras 60 días sin actividad en el repositorio. Para mayor constancia, agregar un monitor externo gratis (UptimeRobot o cron-job.org) sobre `/api/salud/` cada 5 minutos. El plan gratis de Render da 750 horas al mes, suficientes para un solo servicio encendido todo el mes. Ningún plan gratis garantiza disponibilidad; para una tienda real con clientes se recomienda un plan de pago de Render, que no se duerme.
+
 ## Flujo de trabajo en equipo con Git
 ```bash
 git checkout main

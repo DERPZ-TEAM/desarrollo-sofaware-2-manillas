@@ -142,7 +142,7 @@ Instala dependencias, `collectstatic`, `migrate` y el seed. Si falla, Render no 
 Render y Vercel detectan el push a `main` y redespliegan automáticamente (despliegue continuo).
 
 **39. ¿Por qué la primera carga es lenta?**
-El plan gratis de Render "duerme" el servicio tras 15 minutos sin uso; la primera petición lo despierta (~50 s).
+El plan gratis de Render "duerme" el servicio tras 15 minutos sin uso; la primera petición lo despierta (~1 minuto). Por eso una tarea de GitHub Actions lo visita cada 10 minutos (`.github/workflows/mantener-activo.yml`), y si aun así está dormido, la página muestra un aviso y espera sola (`frontend/src/api/client.js`).
 
 ## H. Calidad
 

@@ -49,6 +49,49 @@ function mensajeDeError(data, status) {
   return 'No se pudo completar la solicitud.'
 }
 
+// ---------------------------------------------------------------------------
+// Servidor dormido: Render (plan gratis) apaga el backend si nadie lo usa. Mientras
+// despierta, el navegador ve un error de red. En vez de mostrar "sin conexión",
+// avisamos al usuario y esperamos a que /salud/ responda.
+// ---------------------------------------------------------------------------
+const ESPERA_MAXIMA_MS = 120000
+let despertando = null
+
+function esperarServidor() {
+  if (!despertando) {
+    window.dispatchEvent(new CustomEvent('gb-servidor', { detail: true }))
+    despertando = (async () => {
+      const limite = Date.now() + ESPERA_MAXIMA_MS
+      while (Date.now() < limite) {
+        try {
+          const r = await fetch(`${API_URL}/salud/`)
+          if (r.ok) return true
+        } catch { /* sigue dormido: volvemos a intentar */ }
+        await new Promise((listo) => setTimeout(listo, 3000))
+      }
+      return false
+    })().finally(() => {
+      despertando = null
+      window.dispatchEvent(new CustomEvent('gb-servidor', { detail: false }))
+    })
+  }
+  return despertando
+}
+
+// Solo se repite lo que no puede duplicar nada: consultas (GET) e inicios de sesión.
+// Una compra NUNCA se reintenta sola, para no crear dos pedidos.
+function sePuedeRepetir(method, path) {
+  return method === 'GET' || path.startsWith('/auth/login') || path.startsWith('/auth/admin/login')
+}
+
+async function recuperarDeCaida(path, opciones) {
+  if (!navigator.onLine) throw new ApiError(mensajeDeError(null, 0), 0, null)
+  const activo = await esperarServidor()
+  if (!activo) throw new ApiError(mensajeDeError(null, 0), 0, null)
+  if (sePuedeRepetir(opciones.method, path)) return api(path, { ...opciones, reintentoRed: false })
+  throw new ApiError('El servidor se estaba activando y ya está listo. Por favor intenta de nuevo.', 0, null)
+}
+
 // Una sola renovación a la vez aunque varias peticiones fallen juntas
 let refreshing = null
 async function renovarToken() {
@@ -75,7 +118,7 @@ async function renovarToken() {
  * api('/carrito/', { method: 'POST', body: {...} })    -> JSON
  * api('/productos/', { method: 'POST', body: formData })-> multipart (imágenes)
  */
-export async function api(path, { method = 'GET', body, auth = true, retry = true } = {}) {
+export async function api(path, { method = 'GET', body, auth = true, retry = true, reintentoRed = true } = {}) {
   const headers = { Accept: 'application/json' }
   const isForm = body instanceof FormData
   if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
@@ -89,11 +132,17 @@ export async function api(path, { method = 'GET', body, auth = true, retry = tru
       body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     })
   } catch {
+    if (reintentoRed) return recuperarDeCaida(path, { method, body, auth, retry })
     throw new ApiError(mensajeDeError(null, 0), 0, null)
   }
 
+  // 502/503/504: Render todavía está arrancando el servicio
+  if ([502, 503, 504].includes(res.status) && reintentoRed && sePuedeRepetir(method, path)) {
+    return recuperarDeCaida(path, { method, body, auth, retry })
+  }
+
   if (res.status === 401 && auth && retry && tokens.refresh && !path.startsWith('/auth/login')) {
-    if (await renovarToken()) return api(path, { method, body, auth, retry: false })
+    if (await renovarToken()) return api(path, { method, body, auth, retry: false, reintentoRed })
     onSessionExpired()
     throw new ApiError('Tu sesión expiró. Inicia sesión de nuevo.', 401, null)
   }

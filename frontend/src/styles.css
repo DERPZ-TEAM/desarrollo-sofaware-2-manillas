@@ -374,6 +374,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--gold); box-shado
 .bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--gold-deep), var(--gold)); min-width: 4px; }
 .bar-value { text-align: right; font-weight: 600; }
 
+/* Aviso mientras el servidor se activa */
+.aviso-servidor { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 200; display: flex; align-items: center; gap: 12px; width: min(560px, calc(100% - 32px)); padding: 14px 18px; border-radius: var(--radius); background: var(--ink); color: var(--white); font-size: 14px; box-shadow: var(--shadow); }
+.aviso-servidor .loader-ring { flex: none; }
+
 /* ---------- Responsive (celulares y tablets) ---------- */
 @media (max-width: 960px) {
   .hero { grid-template-columns: 1fr; min-height: auto; padding-block: 56px 80px; }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import { Alert, EmptyState, Field, Loader, StatusBadge } from '../../components/ui'
+import { Alert, EmptyState, Field, Loader, Reintentar, StatusBadge } from '../../components/ui'
 
 /** CRUD de categorías (HU-IN-010). */
 export default function AdminCategories() {
@@ -45,7 +45,7 @@ export default function AdminCategories() {
         </div>
       </form>
 
-      {items === null ? <Loader /> : items.length === 0 ? <EmptyState title="Aún no hay categorías" /> : (
+      {items === null ? (msg.type === 'error' ? <Reintentar /> : <Loader />) : items.length === 0 ? <EmptyState title="Aún no hay categorías" /> : (
         <div className="table-wrap">
           <table className="table">
             <thead><tr><th>Nombre</th><th>Productos</th><th>Estado</th><th className="right">Acciones</th></tr></thead>

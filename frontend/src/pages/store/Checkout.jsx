@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
-import { Alert, EmptyState, Field, Loader } from '../../components/ui'
+import { Alert, EmptyState, Field, Loader, Reintentar } from '../../components/ui'
 import { useAuth } from '../../context/AuthContext'
 import { money } from '../../utils/format'
 
@@ -65,7 +65,7 @@ export default function Checkout() {
     }
   }
 
-  if (!cart) return <div className="wrap section"><Alert>{error}</Alert><Loader /></div>
+  if (!cart) return <div className="wrap section"><Alert>{error}</Alert>{error ? <Reintentar /> : <Loader />}</div>
   if (cart.items.length === 0) {
     return <div className="wrap section"><EmptyState title="No hay nada que pagar" action={<Link to="/catalogo" className="btn btn-dark">Ir al catálogo</Link>} /></div>
   }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../api/client'
-import { Alert, EmptyState, Loader } from '../../components/ui'
+import { Alert, EmptyState, Loader, Reintentar } from '../../components/ui'
 import { useAuth } from '../../context/AuthContext'
 import { IMAGEN_RESPALDO, money } from '../../utils/format'
 
@@ -38,7 +38,7 @@ export default function Cart() {
   const quitar = (item) => ejecutar(api(`/carrito/items/${item.id}/`, { method: 'DELETE' }))
   const vaciar = () => window.confirm('¿Vaciar todo el carrito?') && ejecutar(api('/carrito/', { method: 'DELETE' }))
 
-  if (!cart) return <div className="wrap section"><Alert type={msg.type}>{msg.text}</Alert><Loader text="Cargando carrito..." /></div>
+  if (!cart) return <div className="wrap section"><Alert type={msg.type}>{msg.text}</Alert>{msg.type === 'error' ? <Reintentar /> : <Loader text="Cargando carrito..." />}</div>
 
   const { resumen } = cart
   const faltan = resumen.cantidad_items < 6 ? 6 - resumen.cantidad_items : resumen.cantidad_items < 12 ? 12 - resumen.cantidad_items : resumen.cantidad_items < 24 ? 24 - resumen.cantidad_items : 0

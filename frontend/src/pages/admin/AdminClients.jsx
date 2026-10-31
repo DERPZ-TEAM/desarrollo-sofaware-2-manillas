@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import { Alert, EmptyState, Loader } from '../../components/ui'
+import { Alert, EmptyState, Loader, Reintentar } from '../../components/ui'
 import { fecha, money } from '../../utils/format'
 
 /** Consulta de clientes registrados, en orden alfabético (HU-US-005). */
@@ -21,7 +21,7 @@ export default function AdminClients() {
       <div className="page-head"><div><h1>Clientes</h1><p className="muted">Cuentas registradas en la tienda.</p></div></div>
       <Alert>{error}</Alert>
       <div className="toolbar"><input placeholder="Buscar por nombre, usuario o correo…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-      {items === null ? <Loader /> : items.length === 0 ? <EmptyState title="No hay clientes" /> : (
+      {items === null ? (error ? <Reintentar /> : <Loader />) : items.length === 0 ? <EmptyState title="No hay clientes" /> : (
         <div className="table-wrap">
           <table className="table">
             <thead><tr><th>Cliente</th><th>Usuario</th><th>Correo</th><th>Teléfono</th><th>Ciudad</th><th>Pedidos</th><th>Total comprado</th><th>Registro</th></tr></thead>

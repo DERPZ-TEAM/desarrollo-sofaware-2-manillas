@@ -22,6 +22,15 @@ export function Loader({ text = 'Cargando...' }) {
   )
 }
 
+/** Se muestra en lugar del círculo de carga cuando la consulta ya falló. */
+export function Reintentar() {
+  return (
+    <div className="center">
+      <button type="button" className="btn btn-dark" onClick={() => window.location.reload()}>Reintentar</button>
+    </div>
+  )
+}
+
 export function EmptyState({ title, children, action }) {
   return (
     <div className="empty">

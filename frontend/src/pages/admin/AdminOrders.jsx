@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import { Alert, EmptyState, Field, Loader, Modal, StatusBadge } from '../../components/ui'
+import { Alert, EmptyState, Field, Loader, Modal, Reintentar, StatusBadge } from '../../components/ui'
 import { ESTADOS_PEDIDO, fecha, money } from '../../utils/format'
 
 /** Gestión de pedidos: historial, estados y guía de envío (HU-PE-024, 025, 050, HU-IN-029). */
@@ -48,7 +48,7 @@ export default function AdminOrders() {
         </select>
       </div>
 
-      {items === null ? <Loader /> : items.length === 0 ? <EmptyState title="No hay pedidos registrados" /> : (
+      {items === null ? (msg.type === 'error' ? <Reintentar /> : <Loader />) : items.length === 0 ? <EmptyState title="No hay pedidos registrados" /> : (
         <div className="table-wrap">
           <table className="table">
             <thead><tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Pago</th><th>Total</th><th>Estado</th><th className="right" /></tr></thead>

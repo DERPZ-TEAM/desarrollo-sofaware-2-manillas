@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import { Alert, EmptyState, Loader, StatusBadge } from '../../components/ui'
+import { Alert, EmptyState, Loader, Reintentar, StatusBadge } from '../../components/ui'
 import { money } from '../../utils/format'
 
 const ETIQUETA = { agotado: 'Agotado', bajo: 'Bajo stock', ok: 'Suficiente' }
@@ -43,7 +43,7 @@ export default function AdminInventory() {
           <button key={v} className={estado === v ? 'active' : ''} onClick={() => setEstado(v)}>{l}</button>
         ))}
       </div>
-      {data === null ? <Loader /> : data.productos.length === 0 ? <EmptyState title="No hay productos en este estado" /> : (
+      {data === null ? (error ? <Reintentar /> : <Loader />) : data.productos.length === 0 ? <EmptyState title="No hay productos en este estado" /> : (
         <div className="table-wrap">
           <table className="table">
             <thead><tr><th>Producto</th><th>Categoría</th><th>Stock</th><th>Mínimo</th><th>Estado</th><th>Valor</th><th className="right">Ajustar stock</th></tr></thead>

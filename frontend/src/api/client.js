@@ -55,11 +55,20 @@ function mensajeDeError(data, status) {
 // avisamos al usuario y esperamos a que /salud/ responda.
 // ---------------------------------------------------------------------------
 const ESPERA_MAXIMA_MS = 120000
+const AVISO_LENTO_MS = 5000      // si una consulta tarda más, avisamos que se está activando
+const LIMITE_CONSULTA_MS = 75000 // y si pasa de aquí la cortamos para no esperar para siempre
 let despertando = null
+
+// Varias peticiones pueden necesitar el aviso a la vez: solo se oculta cuando ninguna lo usa
+let avisosActivos = 0
+function aviso(cambio) {
+  avisosActivos += cambio
+  window.dispatchEvent(new CustomEvent('gb-servidor', { detail: avisosActivos > 0 }))
+}
 
 function esperarServidor() {
   if (!despertando) {
-    window.dispatchEvent(new CustomEvent('gb-servidor', { detail: true }))
+    aviso(1)
     despertando = (async () => {
       const limite = Date.now() + ESPERA_MAXIMA_MS
       while (Date.now() < limite) {
@@ -72,7 +81,7 @@ function esperarServidor() {
       return false
     })().finally(() => {
       despertando = null
-      window.dispatchEvent(new CustomEvent('gb-servidor', { detail: false }))
+      aviso(-1)
     })
   }
   return despertando
@@ -124,16 +133,28 @@ export async function api(path, { method = 'GET', body, auth = true, retry = tru
   if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
   if (auth && tokens.access) headers.Authorization = `Bearer ${tokens.access}`
 
+  // Solo se puede cortar lo que es seguro repetir: una compra en curso nunca se interrumpe
+  const repetible = sePuedeRepetir(method, path)
+  const control = new AbortController()
+  let avisoMostrado = false
+  const relojAviso = repetible && setTimeout(() => { avisoMostrado = true; aviso(1) }, AVISO_LENTO_MS)
+  const relojCorte = repetible && setTimeout(() => control.abort(), LIMITE_CONSULTA_MS)
+
   let res
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
+      signal: control.signal,
     })
   } catch {
     if (reintentoRed) return recuperarDeCaida(path, { method, body, auth, retry })
     throw new ApiError(mensajeDeError(null, 0), 0, null)
+  } finally {
+    clearTimeout(relojAviso)
+    clearTimeout(relojCorte)
+    if (avisoMostrado) aviso(-1)
   }
 
   // 502/503/504: Render todavía está arrancando el servicio

@@ -114,8 +114,11 @@ def inferir_tipo(nombre_categoria, nombre):
 
 
 def inferir_piedra(tipo, nombre, descripcion):
-    """En pulseras tejidas "esmeralda" suele ser el color del hilo, no una piedra."""
-    if tipo == 'pulsera':
+    """Deduce la piedra del texto, salvo donde la palabra no habla de una piedra:
+    - pulseras tejidas: "esmeralda" suele ser el color del hilo;
+    - relojes: "cuarzo" es el tipo de movimiento (la maquinaria), no una piedra.
+    """
+    if tipo in ('pulsera', 'reloj'):
         return ''
     texto = f'{nombre} {descripcion}'.lower()
     for palabra, piedra in _PALABRAS_PIEDRA:

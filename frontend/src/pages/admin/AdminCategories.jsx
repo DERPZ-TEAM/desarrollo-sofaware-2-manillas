@@ -58,7 +58,7 @@ export default function AdminCategories() {
                   <td className="row-actions right">
                     <button className="btn btn-ghost btn-sm" onClick={() => { setEditId(c.id); setForm({ nombre: c.nombre, descripcion: c.descripcion }) }}>Editar</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => accion(api(`/categorias/${c.id}/`, { method: 'PATCH', body: { activa: !c.activa } }), 'Visibilidad actualizada.')}>{c.activa ? 'Ocultar' : 'Mostrar'}</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => window.confirm(`¿Eliminar "${c.nombre}"? Sus productos quedarán sin categoría.`) && accion(api(`/categorias/${c.id}/`, { method: 'DELETE' }), 'Categoría eliminada.')}>Eliminar</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => window.confirm(`¿Mover "${c.nombre}" a la Papelera? Sus productos no se borran, pero no se verán en la tienda hasta que la restaures.`) && accion(api(`/categorias/${c.id}/`, { method: 'DELETE' }), 'Categoría eliminada.')}>Eliminar</button>
                   </td>
                 </tr>
               ))}

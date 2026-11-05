@@ -31,6 +31,7 @@ import AdminInventory from './pages/admin/AdminInventory'
 import AdminOrders from './pages/admin/AdminOrders'
 import AdminClients from './pages/admin/AdminClients'
 import AdminReports from './pages/admin/AdminReports'
+import AdminPapelera from './pages/admin/AdminPapelera'
 
 export default function App() {
   return (
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="pedidos" element={<AdminOrders />} />
         <Route path="clientes" element={<AdminClients />} />
         <Route path="reportes" element={<AdminReports />} />
+        <Route path="papelera" element={<AdminPapelera />} />
       </Route>
     </Routes>
   )

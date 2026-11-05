@@ -106,6 +106,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--gold); box-shado
 .has-error input, .has-error select, .has-error textarea { border-color: var(--danger); }
 .field-error { color: var(--danger); font-size: 12.5px; }
 .field-hint { color: var(--muted); font-size: 12.5px; }
+/* Campo de contraseña con ojito (mouse encima / dedo presionado = se ve) */
+.password-field { position: relative; }
+.password-field input { padding-right: 48px !important; }
+.password-eye { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: color .15s, background .15s; }
+.password-eye:hover, .password-eye.is-visible { color: var(--gold-deep); background: var(--gold-soft); }
+.password-eye:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .check { display: flex; gap: 10px; align-items: center; font-size: 14px; margin: 6px 0 16px; cursor: pointer; }

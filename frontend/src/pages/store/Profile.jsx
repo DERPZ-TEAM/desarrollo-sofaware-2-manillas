@@ -4,6 +4,8 @@ import { api } from '../../api/client'
 import { Alert, EmptyState, Field, Loader, StatusBadge } from '../../components/ui'
 import { useAuth } from '../../context/AuthContext'
 import { fecha, money } from '../../utils/format'
+import PasswordInput from '../../components/PasswordInput'
+import { TIPOS_DOCUMENTO } from '../../utils/format'
 
 /** Mi cuenta: datos personales (HU-US-004), contraseña e historial de pedidos (HU-PE-023). */
 export default function Profile() {
@@ -13,6 +15,7 @@ export default function Profile() {
   const [pedidos, setPedidos] = useState(null)
   const [form, setForm] = useState({
     first_name: user.first_name || '', last_name: user.last_name || '', email: user.email || '',
+    tipo_documento: user.tipo_documento || 'CC', numero_documento: user.numero_documento || '',
     telefono: user.telefono || '', direccion: user.direccion || '', ciudad: user.ciudad || '', departamento: user.departamento || '',
   })
   const [pass, setPass] = useState({ password_actual: '', password: '', password2: '' })
@@ -86,6 +89,19 @@ export default function Profile() {
 
       {tab === 'datos' && (
         <form className="panel narrow" onSubmit={guardar} noValidate>
+          {!user.numero_documento && (
+            <p className="hint-box">Completa tu documento: lo pedimos para emitir el comprobante de tus compras.</p>
+          )}
+          <div className="two">
+            <Field label="Tipo de documento">
+              <select value={form.tipo_documento} onChange={(e) => set('tipo_documento', e.target.value)}>
+                {TIPOS_DOCUMENTO.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Número de documento" error={errors.numero_documento}>
+              <input value={form.numero_documento} onChange={(e) => set('numero_documento', e.target.value)} />
+            </Field>
+          </div>
           <div className="two">
             <Field label="Nombre" error={errors.first_name}><input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} /></Field>
             <Field label="Apellidos" error={errors.last_name}><input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} /></Field>
@@ -105,9 +121,9 @@ export default function Profile() {
 
       {tab === 'clave' && (
         <form className="panel narrow" onSubmit={cambiarClave} noValidate>
-          <Field label="Contraseña actual" error={errors.password_actual}><input type="password" value={pass.password_actual} onChange={(e) => setPass({ ...pass, password_actual: e.target.value })} autoComplete="current-password" /></Field>
-          <Field label="Nueva contraseña" error={errors.password} hint="Mínimo 8 caracteres, con letras y números."><input type="password" value={pass.password} onChange={(e) => setPass({ ...pass, password: e.target.value })} autoComplete="new-password" /></Field>
-          <Field label="Confirmar nueva contraseña" error={errors.password2}><input type="password" value={pass.password2} onChange={(e) => setPass({ ...pass, password2: e.target.value })} autoComplete="new-password" /></Field>
+          <Field label="Contraseña actual" error={errors.password_actual}><PasswordInput value={pass.password_actual} onChange={(e) => setPass({ ...pass, password_actual: e.target.value })} autoComplete="current-password" /></Field>
+          <Field label="Nueva contraseña" error={errors.password} hint="Mínimo 8 caracteres, con letras y números."><PasswordInput value={pass.password} onChange={(e) => setPass({ ...pass, password: e.target.value })} autoComplete="new-password" /></Field>
+          <Field label="Confirmar nueva contraseña" error={errors.password2}><PasswordInput value={pass.password2} onChange={(e) => setPass({ ...pass, password2: e.target.value })} autoComplete="new-password" /></Field>
           <button className="btn btn-dark">Cambiar contraseña</button>
         </form>
       )}

@@ -5,10 +5,19 @@ Cada clase se convierte en una tabla de PostgreSQL y cada atributo en una
 columna. Django crea/actualiza las tablas con "python manage.py migrate".
 
 Relaciones (llaves foráneas = FK):
-    auth_user 1───1 account_perfil        (rol cliente/admin, teléfono)
-    auth_user 1───1 carrito 1───* item_carrito *───1 producto
-    auth_user 1───* pedido 1───* item_pedido *───1 producto
+    auth_user 1───1    account_perfil      (USUARIO: cuenta para entrar + rol)
+    auth_user 1───0..1 cliente             (CLIENTE: la persona que compra)
+    cliente   1───*    pedido 1───* item_pedido *───1 producto
+    auth_user 1───1    carrito 1───* item_carrito *───1 producto
     account_categoria 1───* producto
+
+Usuario y cliente NO son lo mismo:
+  - Un administrador es usuario pero no cliente.
+  - Una persona que compra en el local puede ser cliente sin tener usuario.
+
+Borrado lógico (papelera): productos, categorías y clientes tienen la columna
+"eliminado_en". Al eliminarlos desde el panel solo se llena esa fecha y dejan de
+verse; desde la Papelera se pueden restaurar o eliminar definitivamente.
 """
 import uuid
 from decimal import Decimal
@@ -20,11 +29,26 @@ from django.db import models
 from django.utils.text import slugify
 
 
+class VigentesManager(models.Manager):
+    """Manager por defecto: oculta lo que está en la papelera (eliminado_en con fecha).
+
+    Así ninguna consulta normal (tienda, panel, reportes) ve lo eliminado.
+    Para incluirlo se usa el manager "todos": Producto.todos.all()
+    """
+
+    def get_queryset(self):
+        return super().get_queryset().filter(eliminado_en__isnull=True)
+
+
 def generar_slug_unico(modelo, texto, instancia_pk=None, max_len=140):
-    """Crea un 'slug' (texto para URL, ej. 'pulsera-oro-18k') que no se repita."""
+    """Crea un 'slug' (texto para URL, ej. 'pulsera-oro-18k') que no se repita.
+
+    Revisa también lo que está en la papelera ("todos"), porque el slug es único
+    en toda la tabla.
+    """
     base = (slugify(texto) or 'item')[: max_len - 6]
     slug, n = base, 1
-    while modelo.objects.filter(slug=slug).exclude(pk=instancia_pk).exists():
+    while modelo.todos.filter(slug=slug).exclude(pk=instancia_pk).exists():
         n += 1
         slug = f'{base}-{n}'
     return slug
@@ -40,7 +64,11 @@ def ruta_imagen_producto(instancia, nombre_archivo):
 
 
 class Perfil(models.Model):
-    """Datos extra del usuario. Aquí vive el campo ROL (cliente / admin)."""
+    """Datos de la CUENTA (usuario): aquí vive el ROL (cliente / admin).
+
+    Los datos personales de quien compra (documento, teléfono, dirección) ya no
+    van aquí sino en la tabla Cliente.
+    """
     ROL_CLIENTE = 'cliente'
     ROL_ADMIN = 'admin'
     ROLES = (
@@ -55,11 +83,6 @@ class Perfil(models.Model):
         related_name='perfil',
     )
     rol = models.CharField(max_length=20, choices=ROLES, default=ROL_CLIENTE, db_index=True)
-    telefono = models.CharField(max_length=20, blank=True, default='')
-    # Datos de envío guardados para autocompletar el checkout (HU-VE-019)
-    direccion = models.CharField(max_length=200, blank=True, default='')
-    ciudad = models.CharField(max_length=80, blank=True, default='')
-    departamento = models.CharField(max_length=80, blank=True, default='')
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)
 
@@ -79,8 +102,12 @@ class Categoria(models.Model):
     descripcion = models.TextField(blank=True, default='')
     activa = models.BooleanField(default=True)
     orden = models.PositiveIntegerField(default=0)
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)   # papelera
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)
+
+    objects = VigentesManager()      # por defecto: sin lo que está en la papelera
+    todos = models.Manager()         # todo, incluida la papelera
 
     class Meta:
         db_table = 'account_categoria'
@@ -134,8 +161,12 @@ class Producto(models.Model):
     peso_gramos = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     talla_cm = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
     elaboracion = models.CharField(max_length=10, choices=ELABORACION, blank=True, default='')
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)   # papelera
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)
+
+    objects = VigentesManager()
+    todos = models.Manager()
 
     class Meta:
         db_table = 'producto'
@@ -163,6 +194,63 @@ class Producto(models.Model):
 
     def __str__(self):
         return self.nombre
+
+
+class Cliente(models.Model):
+    """La PERSONA que compra. Puede tener cuenta en la web (usuario) o no."""
+    TIPOS_DOCUMENTO = (
+        ('CC', 'Cédula de ciudadanía'),
+        ('CE', 'Cédula de extranjería'),
+        ('TI', 'Tarjeta de identidad'),
+        ('PAS', 'Pasaporte'),
+    )
+
+    id = models.BigAutoField(primary_key=True)
+    usuario = models.OneToOneField(          # FK única y OPCIONAL: relación 1 a 0..1
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,           # si se borra la cuenta, el cliente y sus compras quedan
+        null=True,
+        blank=True,
+        related_name='cliente',
+    )
+    tipo_documento = models.CharField(max_length=4, choices=TIPOS_DOCUMENTO, default='CC')
+    numero_documento = models.CharField(max_length=20, blank=True, default='')
+    nombres = models.CharField(max_length=80)
+    apellidos = models.CharField(max_length=80, blank=True, default='')
+    correo = models.EmailField(blank=True, default='')
+    telefono = models.CharField(max_length=20, blank=True, default='')
+    # Dirección guardada para autocompletar el checkout (HU-VE-019)
+    direccion = models.CharField(max_length=200, blank=True, default='')
+    ciudad = models.CharField(max_length=80, blank=True, default='')
+    departamento = models.CharField(max_length=80, blank=True, default='')
+    eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)   # papelera
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    objects = VigentesManager()
+    todos = models.Manager()
+
+    class Meta:
+        db_table = 'cliente'
+        ordering = ['nombres', 'apellidos']
+        verbose_name = 'Cliente'
+        verbose_name_plural = 'Clientes'
+        constraints = [
+            # Una persona no se puede registrar dos veces con el mismo documento.
+            # Los clientes antiguos sin documento (vacío) no cuentan.
+            models.UniqueConstraint(
+                fields=['tipo_documento', 'numero_documento'],
+                condition=~models.Q(numero_documento=''),
+                name='cliente_documento_unico',
+            ),
+        ]
+
+    @property
+    def nombre_completo(self):
+        return f'{self.nombres} {self.apellidos}'.strip()
+
+    def __str__(self):
+        return self.nombre_completo
 
 
 class Carrito(models.Model):
@@ -234,10 +322,17 @@ class Pedido(models.Model):
     )
 
     id = models.BigAutoField(primary_key=True)
-    usuario = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,             # no se puede borrar un usuario con pedidos
+    cliente = models.ForeignKey(               # DE QUIÉN es la compra
+        Cliente,
+        on_delete=models.PROTECT,             # no se puede borrar un cliente con compras
         related_name='pedidos',
+    )
+    registrado_por = models.ForeignKey(        # QUIÉN la registró: el cliente en la web o un admin
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pedidos_registrados',
     )
     subtotal = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     descuento = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -268,7 +363,7 @@ class Pedido(models.Model):
         return nuevo_estado in self.TRANSICIONES.get(self.estado, set())
 
     def __str__(self):
-        return f'Pedido #{self.id} - {self.usuario.username}'
+        return f'Pedido #{self.id} - {self.cliente}'
 
 
 class ItemPedido(models.Model):

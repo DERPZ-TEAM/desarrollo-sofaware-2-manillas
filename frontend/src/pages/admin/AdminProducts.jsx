@@ -111,7 +111,7 @@ export default function AdminProducts() {
   }
 
   async function eliminar(p) {
-    if (!window.confirm(`¿Eliminar "${p.nombre}" del catálogo? Esta acción no se puede deshacer.`)) return
+    if (!window.confirm(`¿Mover "${p.nombre}" a la Papelera? Dejará de verse en la tienda y podrás restaurarlo desde Papelera.`)) return
     try {
       const r = await api(`/productos/${p.id}/`, { method: 'DELETE' })
       setMsg({ type: 'ok', text: r.detail })

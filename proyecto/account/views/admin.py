@@ -16,10 +16,11 @@ from rest_framework.response import Response
 
 from .. import services
 from ..exceptions import ErrorDeNegocio
-from ..models import Categoria, ItemPedido, Pedido, Producto
+from ..models import Categoria, Cliente, ItemPedido, Pedido, Producto
 from ..permissions import EsAdministrador
 from ..serializers import (
-    ClienteAdminSerializer,
+    CategoriaSerializer,
+    ClienteSerializer,
     PedidoAdminUpdateSerializer,
     PedidoSerializer,
     ProductoListSerializer,
@@ -66,7 +67,7 @@ def dashboard_view(request):
         'productos': Producto.objects.count(),
         'productos_visibles': Producto.objects.filter(activo=True).count(),
         'categorias': Categoria.objects.count(),
-        'clientes': User.objects.filter(is_staff=False).count(),
+        'clientes': Cliente.objects.count(),
         'pedidos': Pedido.objects.count(),
         'pedidos_pendientes': Pedido.objects.filter(estado=Pedido.PENDIENTE).count(),
         'ventas': ventas.aggregate(t=Coalesce(Sum('total'), CERO))['t'],
@@ -74,7 +75,8 @@ def dashboard_view(request):
         'unidades_en_inventario': Producto.objects.aggregate(t=Coalesce(Sum('stock'), 0))['t'],
         'alertas_stock': ProductoListSerializer(alertas[:10], many=True, context={'request': request}).data,
         'pedidos_recientes': PedidoSerializer(
-            Pedido.objects.select_related('usuario').prefetch_related('items')[:6], many=True,
+            Pedido.objects.select_related('cliente__usuario', 'registrado_por').prefetch_related('items')[:6],
+            many=True,
         ).data,
     })
 
@@ -95,14 +97,15 @@ class PedidoAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     http_method_names = ['get', 'patch', 'head', 'options']
 
     def get_queryset(self):
-        qs = Pedido.objects.select_related('usuario').prefetch_related('items')
+        qs = Pedido.objects.select_related('cliente__usuario', 'registrado_por').prefetch_related('items')
         p = self.request.query_params
         if p.get('estado'):
             qs = qs.filter(estado=p['estado'])
         if p.get('q'):
             q = p['q'].strip()
-            filtro = Q(usuario__username__icontains=q) | Q(usuario__email__icontains=q) | \
-                Q(nombre_destinatario__icontains=q)
+            filtro = (Q(cliente__nombres__icontains=q) | Q(cliente__apellidos__icontains=q)
+                      | Q(cliente__numero_documento__icontains=q) | Q(cliente__correo__icontains=q)
+                      | Q(cliente__usuario__username__icontains=q) | Q(nombre_destinatario__icontains=q))
             if q.isdigit():
                 filtro |= Q(pk=int(q))
             qs = qs.filter(filtro)
@@ -133,24 +136,84 @@ class PedidoAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
 
 # ---------------------------------------------------------------------------
-# Clientes (HU-US-005)
+# Clientes (HU-US-005): la PERSONA que compra, tenga o no cuenta en la web
+# ---------------------------------------------------------------------------
+class ClienteAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
+                          mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    """
+    GET    /api/admin/clientes/?q=texto -> clientes en orden alfabético
+    POST   /api/admin/clientes/         -> registrar cliente SIN cuenta (venta en el local)
+    PATCH  /api/admin/clientes/{id}/    -> editar sus datos
+    DELETE /api/admin/clientes/{id}/    -> mover a la papelera (borrado lógico)
+    """
+    serializer_class = ClienteSerializer
+    permission_classes = [EsAdministrador]
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        qs = Cliente.objects.select_related('usuario').annotate(
+            total_pedidos=Count('pedidos', distinct=True),
+            total_comprado=Coalesce(Sum('pedidos__total', filter=~Q(pedidos__estado=Pedido.CANCELADO)), CERO),
+        )
+        q = (self.request.query_params.get('q') or '').strip()
+        if q:
+            qs = qs.filter(Q(nombres__icontains=q) | Q(apellidos__icontains=q) | Q(numero_documento__icontains=q)
+                           | Q(correo__icontains=q) | Q(usuario__username__icontains=q))
+        return qs.order_by('nombres', 'apellidos')
+
+    def create(self, request, *args, **kwargs):
+        respuesta = super().create(request, *args, **kwargs)
+        respuesta.data['detail'] = 'Cliente registrado correctamente.'
+        return respuesta
+
+    def destroy(self, request, *args, **kwargs):
+        cliente = self.get_object()
+        services.mover_a_papelera(cliente)
+        return Response({'detail': f'"{cliente.nombre_completo}" se movió a la Papelera.'})
+
+
+# ---------------------------------------------------------------------------
+# Papelera: lo eliminado (borrado lógico), para restaurar o borrar de verdad
 # ---------------------------------------------------------------------------
 @api_view(['GET'])
 @permission_classes([EsAdministrador])
-def clientes_admin_view(request):
-    """GET /api/admin/clientes/?q=texto -> clientes en orden alfabético"""
-    qs = User.objects.filter(is_staff=False).select_related('perfil').annotate(
-        total_pedidos=Count('pedidos', distinct=True),
-        total_comprado=Coalesce(
-            Sum('pedidos__total', filter=~Q(pedidos__estado=Pedido.CANCELADO)), CERO
-        ),
-    )
-    q = (request.query_params.get('q') or '').strip()
-    if q:
-        qs = qs.filter(Q(username__icontains=q) | Q(email__icontains=q) |
-                       Q(first_name__icontains=q) | Q(last_name__icontains=q))
-    qs = qs.order_by('first_name', 'last_name', 'username')
-    return Response(ClienteAdminSerializer(qs, many=True).data)
+def papelera_view(request):
+    """GET /api/admin/papelera/ -> productos, categorías y clientes eliminados"""
+    contexto = {'request': request}
+    return Response({
+        'productos': ProductoListSerializer(
+            Producto.todos.filter(eliminado_en__isnull=False).select_related('categoria').order_by('-eliminado_en'),
+            many=True, context=contexto).data,
+        'categorias': CategoriaSerializer(
+            Categoria.todos.filter(eliminado_en__isnull=False)
+            .annotate(total_productos=Count('productos', filter=Q(productos__eliminado_en__isnull=True)))
+            .order_by('-eliminado_en'), many=True).data,
+        'clientes': ClienteSerializer(
+            Cliente.todos.filter(eliminado_en__isnull=False).select_related('usuario')
+            .annotate(total_pedidos=Count('pedidos')).order_by('-eliminado_en'), many=True).data,
+    })
+
+
+@api_view(['POST', 'DELETE'])
+@permission_classes([EsAdministrador])
+def papelera_accion_view(request, tipo, objeto_id):
+    """
+    POST   /api/admin/papelera/{tipo}/{id}/  -> restaurar
+    DELETE /api/admin/papelera/{tipo}/{id}/  -> eliminar DEFINITIVAMENTE (no se puede deshacer)
+    tipo = productos | categorias | clientes
+    """
+    modelo = services.MODELOS_PAPELERA.get(tipo)
+    if modelo is None:
+        raise ErrorDeNegocio('Tipo no válido.', 404)
+    objeto = modelo.todos.filter(pk=objeto_id, eliminado_en__isnull=False).first()
+    if objeto is None:
+        raise ErrorDeNegocio('No está en la papelera.', 404)
+    if request.method == 'POST':
+        services.restaurar(objeto)
+        return Response({'detail': f'"{objeto}" se restauró.'})
+    nombre = str(objeto)
+    services.eliminar_definitivamente(objeto)
+    return Response({'detail': f'"{nombre}" se eliminó definitivamente.'})
 
 
 # ---------------------------------------------------------------------------

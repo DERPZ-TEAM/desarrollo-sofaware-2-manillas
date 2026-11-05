@@ -9,9 +9,10 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 from django.db.models import F
+from django.utils import timezone
 
 from .exceptions import ErrorDeNegocio
-from .models import Carrito, ItemCarrito, ItemPedido, Pedido, Producto
+from .models import Carrito, Categoria, Cliente, ItemCarrito, ItemPedido, Pedido, Producto
 
 # Descuento por volumen para mayoristas (Especificación inicial, requisito 27):
 # (cantidad mínima de piezas, porcentaje de descuento). Se revisa de mayor a menor.
@@ -116,10 +117,29 @@ def quitar_item(usuario, item_id):
 
 
 # ---------------------------------------------------------------------------
+# Cliente de una cuenta
+# ---------------------------------------------------------------------------
+def obtener_cliente(usuario):
+    """Devuelve el Cliente de una cuenta; si no tiene, lo crea con sus datos.
+
+    Pasa por ejemplo con cuentas creadas desde /django-admin/.
+    """
+    try:
+        return usuario.cliente
+    except Cliente.DoesNotExist:
+        return Cliente.objects.create(
+            usuario=usuario,
+            nombres=usuario.first_name or usuario.username,
+            apellidos=usuario.last_name,
+            correo=usuario.email,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Checkout = convertir el carrito en un pedido (HU-VE-019..022, HU-IN-026)
 # ---------------------------------------------------------------------------
 @transaction.atomic
-def crear_pedido_desde_carrito(usuario, datos_envio):
+def crear_pedido_desde_carrito(usuario, datos_envio, documento=None):
     """Crea el pedido de forma ATÓMICA: o se hace todo, o no se hace nada.
 
     Pasos:
@@ -130,11 +150,25 @@ def crear_pedido_desde_carrito(usuario, datos_envio):
       4. Crea el Pedido y sus ItemPedido (con el precio congelado).
       5. Descuenta el stock y vacía el carrito.
     Si algo falla, transaction.atomic deshace todos los cambios (ROLLBACK).
+
+    El pedido queda a nombre del CLIENTE (de quién es la compra) y guarda en
+    "registrado_por" la cuenta que lo hizo.
     """
     carrito = Carrito.objects.filter(usuario=usuario).first()
     items = list(carrito.items.all()) if carrito else []
     if not items:
         raise ErrorDeNegocio('Tu carrito está vacío.')
+
+    cliente = obtener_cliente(usuario)
+    if not cliente.numero_documento:
+        # Clientes antiguos: les pedimos el documento antes de su primera compra
+        if not documento or not documento.get('numero_documento'):
+            raise ErrorDeNegocio('Escribe tu número de documento para continuar con la compra.')
+        if Cliente.todos.filter(**documento).exclude(pk=cliente.pk).exists():
+            raise ErrorDeNegocio('Ese documento ya está registrado con otro cliente.')
+        cliente.tipo_documento = documento['tipo_documento']
+        cliente.numero_documento = documento['numero_documento']
+        cliente.save(update_fields=['tipo_documento', 'numero_documento', 'actualizado'])
 
     ids = sorted(i.producto_id for i in items)          # orden fijo evita bloqueos cruzados
     productos = {p.id: p for p in Producto.objects.select_for_update().filter(pk__in=ids).order_by('id')}
@@ -153,7 +187,8 @@ def crear_pedido_desde_carrito(usuario, datos_envio):
 
     totales = calcular_totales([(p.precio, c) for p, c in lineas])
     pedido = Pedido.objects.create(
-        usuario=usuario,
+        cliente=cliente,
+        registrado_por=usuario,
         subtotal=totales['subtotal'],
         descuento=totales['descuento'],
         total=totales['total'],
@@ -187,7 +222,66 @@ def cambiar_estado_pedido(pedido, nuevo_estado):
     if nuevo_estado == Pedido.CANCELADO:
         # Devolvemos al inventario lo que se había descontado
         for item in pedido.items.filter(producto__isnull=False):
-            Producto.objects.filter(pk=item.producto_id).update(stock=F('stock') + item.cantidad)
+            # "todos": si el producto está en la papelera también recupera su stock
+            Producto.todos.filter(pk=item.producto_id).update(stock=F('stock') + item.cantidad)
     pedido.estado = nuevo_estado
     pedido.save(update_fields=['estado', 'actualizado'])
     return pedido
+
+
+# ---------------------------------------------------------------------------
+# Papelera: borrado lógico, restaurar y borrado definitivo
+# ---------------------------------------------------------------------------
+MODELOS_PAPELERA = {'productos': Producto, 'categorias': Categoria, 'clientes': Cliente}
+
+
+@transaction.atomic
+def mover_a_papelera(objeto):
+    """Borrado LÓGICO: solo se anota la fecha en "eliminado_en"."""
+    objeto.eliminado_en = timezone.now()
+    objeto.save(update_fields=['eliminado_en', 'actualizado'])
+    if isinstance(objeto, Producto):
+        # Un producto eliminado no debe seguir en los carritos de los clientes
+        ItemCarrito.objects.filter(producto=objeto).delete()
+    if isinstance(objeto, Cliente) and objeto.usuario_id:
+        # El cliente no podrá entrar a la tienda mientras esté en la papelera
+        objeto.usuario.is_active = False
+        objeto.usuario.save(update_fields=['is_active'])
+    return objeto
+
+
+@transaction.atomic
+def restaurar(objeto):
+    """Saca un objeto de la papelera."""
+    if isinstance(objeto, Categoria) and Categoria.objects.filter(nombre__iexact=objeto.nombre).exists():
+        raise ErrorDeNegocio(f'Ya existe otra categoría llamada "{objeto.nombre}". Renómbrala antes de restaurar.')
+    objeto.eliminado_en = None
+    objeto.save(update_fields=['eliminado_en', 'actualizado'])
+    if isinstance(objeto, Cliente) and objeto.usuario_id:
+        objeto.usuario.is_active = True
+        objeto.usuario.save(update_fields=['is_active'])
+    return objeto
+
+
+@transaction.atomic
+def eliminar_definitivamente(objeto):
+    """Borrado FÍSICO: la fila desaparece de la base de datos. No se puede deshacer."""
+    if objeto.eliminado_en is None:
+        raise ErrorDeNegocio('Primero debe estar en la papelera.')
+    if isinstance(objeto, Cliente):
+        pedidos = objeto.pedidos.count()
+        if pedidos:
+            raise ErrorDeNegocio(
+                f'No se puede eliminar definitivamente: tiene {pedidos} pedido(s) en el historial de ventas. '
+                'Puede quedarse en la papelera.'
+            )
+        usuario = objeto.usuario
+        objeto.delete()
+        if usuario:
+            usuario.delete()          # su cuenta también (perfil, carrito y sesiones se borran con ella)
+        return
+    if isinstance(objeto, Producto) and objeto.imagen:
+        objeto.imagen.storage.delete(objeto.imagen.name)
+    # Producto: los pedidos antiguos conservan nombre y precio (FK SET NULL).
+    # Categoría: sus productos quedan "sin categoría" (FK SET NULL).
+    objeto.delete()

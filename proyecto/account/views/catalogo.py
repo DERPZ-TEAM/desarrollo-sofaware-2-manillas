@@ -18,6 +18,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
+from .. import services
 from ..exceptions import ErrorDeNegocio
 from ..models import Categoria, Pedido, Producto
 from ..permissions import LecturaPublicaEscrituraAdmin, es_admin
@@ -30,12 +31,20 @@ class CategoriaViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Categoria.objects.order_by('nombre')
+        vigentes = Q(productos__eliminado_en__isnull=True)    # no contar lo que está en la papelera
         if es_admin(self.request.user):
-            return qs.annotate(total_productos=Count('productos'))
+            return qs.annotate(total_productos=Count('productos', filter=vigentes))
         # Clientes: solo categorías activas y conteo de productos visibles
         return qs.filter(activa=True).annotate(
-            total_productos=Count('productos', filter=Q(productos__activo=True))
+            total_productos=Count('productos', filter=vigentes & Q(productos__activo=True))
         )
+
+    def destroy(self, request, *args, **kwargs):
+        # Borrado LÓGICO: va a la papelera. Sus productos se conservan, pero no se
+        # ven en la tienda mientras la categoría esté en la papelera.
+        categoria = self.get_object()
+        services.mover_a_papelera(categoria)
+        return Response({'detail': f'"{categoria.nombre}" se movió a la Papelera.'})
 
 
 def _decimal(valor, nombre):
@@ -70,7 +79,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
 
         if not es_admin(self.request.user):
             # El cliente solo ve productos activos de categorías activas
-            qs = qs.filter(activo=True).filter(Q(categoria__isnull=True) | Q(categoria__activa=True))
+            qs = qs.filter(activo=True).filter(
+                Q(categoria__isnull=True) | Q(categoria__activa=True, categoria__eliminado_en__isnull=True)
+            )
         elif p.get('activo') in ('true', 'false'):
             qs = qs.filter(activo=p['activo'] == 'true')
 
@@ -129,11 +140,11 @@ class ProductoViewSet(viewsets.ModelViewSet):
         return self._respuesta(serializer.save())
 
     def destroy(self, request, *args, **kwargs):
+        # Borrado LÓGICO: va a la papelera, desde donde se puede restaurar o
+        # eliminar definitivamente (ver views/admin.py -> papelera).
         producto = self.get_object()
-        if producto.imagen:
-            producto.imagen.storage.delete(producto.imagen.name)
-        producto.delete()   # los pedidos antiguos conservan nombre y precio (FK SET NULL)
-        return Response({'detail': 'Producto eliminado del catálogo.'}, status=status.HTTP_200_OK)
+        services.mover_a_papelera(producto)
+        return Response({'detail': f'"{producto.nombre}" se movió a la Papelera.'}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'])
     def visibilidad(self, request, pk=None):

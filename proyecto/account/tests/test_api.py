@@ -579,4 +579,5 @@ class ReferenciasTests(BaseAPITest):
         self.assertEqual(ref.inferir_tipo('', 'Reloj Dorado Ejecutivo'), 'reloj')
         self.assertEqual(ref.inferir_piedra('pulsera', 'Pulsera Tejida Esmeralda', 'hilo verde'), '')
         self.assertEqual(ref.inferir_piedra('brazalete', 'Brazalete Rosa', 'con cinco circonias'), 'circonia')
+        self.assertEqual(ref.inferir_piedra('reloj', 'Reloj Dorado Ejecutivo', 'movimiento de cuarzo'), '')
         self.assertEqual(ref.siguiente('AN-18K-BL-DI', ['AN-18K-BL-DI-007', 'AN-18K-BL-DI-X']), 'AN-18K-BL-DI-008')

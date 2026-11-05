@@ -24,6 +24,7 @@ from ..serializers import (
     PedidoAdminUpdateSerializer,
     PedidoSerializer,
     ProductoListSerializer,
+    UsuarioAdminSerializer,
 )
 
 User = get_user_model()
@@ -68,6 +69,7 @@ def dashboard_view(request):
         'productos_visibles': Producto.objects.filter(activo=True).count(),
         'categorias': Categoria.objects.count(),
         'clientes': Cliente.objects.count(),
+        'usuarios': User.objects.filter(is_staff=False, is_superuser=False).count(),
         'pedidos': Pedido.objects.count(),
         'pedidos_pendientes': Pedido.objects.filter(estado=Pedido.PENDIENTE).count(),
         'ventas': ventas.aggregate(t=Coalesce(Sum('total'), CERO))['t'],
@@ -170,6 +172,32 @@ class ClienteAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixi
         cliente = self.get_object()
         services.mover_a_papelera(cliente)
         return Response({'detail': f'"{cliente.nombre_completo}" se movió a la Papelera.'})
+
+
+# ---------------------------------------------------------------------------
+# Usuarios: todas las CUENTAS. Solo las que ya compraron son también clientes.
+# ---------------------------------------------------------------------------
+class UsuarioAdminViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """
+    GET /api/admin/usuarios/?q=texto&es_cliente=si|no -> cuentas en orden alfabético
+    (Solo lectura: las cuentas las crea cada persona al registrarse.)
+    """
+    serializer_class = UsuarioAdminSerializer
+    permission_classes = [EsAdministrador]
+
+    def get_queryset(self):
+        qs = (User.objects.select_related('perfil', 'cliente')
+              .annotate(total_pedidos=Count('cliente__pedidos', distinct=True)))
+        p = self.request.query_params
+        q = (p.get('q') or '').strip()
+        if q:
+            qs = qs.filter(Q(username__icontains=q) | Q(email__icontains=q)
+                           | Q(first_name__icontains=q) | Q(last_name__icontains=q))
+        if p.get('es_cliente') == 'si':
+            qs = qs.filter(cliente__isnull=False)
+        elif p.get('es_cliente') == 'no':
+            qs = qs.filter(cliente__isnull=True)
+        return qs.order_by('-is_staff', 'username')
 
 
 # ---------------------------------------------------------------------------

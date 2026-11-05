@@ -18,7 +18,7 @@ export default function Dashboard() {
     ['Ventas totales', money(data.ventas), 'gold'],
     ['Ventas del mes', money(data.ventas_mes)],
     ['Pedidos', data.pedidos, null, `${data.pedidos_pendientes} pendientes`],
-    ['Clientes', data.clientes],
+    ['Clientes', data.clientes, null, `${data.usuarios} usuarios registrados`],
     ['Productos', data.productos, null, `${data.productos_visibles} visibles`],
     ['Unidades en inventario', data.unidades_en_inventario],
   ]

@@ -86,10 +86,13 @@ def checkout_view(request):
 
     pedido = services.crear_pedido_desde_carrito(request.user, datos, documento)
 
+    cambios = {}
     if guardar:   # recordamos la dirección en el CLIENTE para la próxima compra
-        Cliente.objects.filter(pk=pedido.cliente_id).update(
-            direccion=datos['direccion_envio'], ciudad=datos['ciudad'], departamento=datos['departamento'],
-        )
+        cambios.update(direccion=datos['direccion_envio'], ciudad=datos['ciudad'], departamento=datos['departamento'])
+    if not pedido.cliente.telefono:
+        cambios['telefono'] = datos['telefono_contacto']
+    if cambios:
+        Cliente.objects.filter(pk=pedido.cliente_id).update(**cambios)
     respuesta = PedidoSerializer(pedido).data
     respuesta['detail'] = f'¡Compra confirmada! Tu pedido es el #{pedido.id}.'
     return Response(respuesta, status=status.HTTP_201_CREATED)

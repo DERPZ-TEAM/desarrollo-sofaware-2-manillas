@@ -9,8 +9,9 @@ const VACIO = {
 }
 
 /**
- * Clientes (HU-US-005). Un CLIENTE es la persona que compra; puede tener cuenta
- * en la web (usuario) o no, por ejemplo si compra en el local.
+ * Clientes (HU-US-005). Un CLIENTE es la persona que YA COMPRÓ: en la web (con
+ * su cuenta de usuario) o en el local (sin cuenta). Quien solo se registró y
+ * aún no compra está en Usuarios, no aquí.
  */
 export default function AdminClients() {
   const [q, setQ] = useState('')
@@ -78,7 +79,7 @@ export default function AdminClients() {
   return (
     <>
       <div className="page-head">
-        <div><h1>Clientes</h1><p className="muted">Personas que compran, tengan o no cuenta en la web.</p></div>
+        <div><h1>Clientes</h1><p className="muted">Personas que ya compraron, en la web o en el local. Las cuentas que aún no compran están en Usuarios.</p></div>
         <button className="btn btn-gold" onClick={() => abrir()}>+ Registrar cliente</button>
       </div>
       <Alert>{error}</Alert>
@@ -112,7 +113,7 @@ export default function AdminClients() {
       <Modal open={editando !== null} title={editando === 'nuevo' ? 'Registrar cliente' : 'Editar cliente'} onClose={() => setEditando(null)}>
         <form onSubmit={guardar} noValidate>
           {editando === 'nuevo' && (
-            <p className="hint-box">Para clientes que compran en el local, sin cuenta web. Si luego se registran en la página con el mismo documento, se les enlaza este cliente.</p>
+            <p className="hint-box">Para clientes que compran en el local, sin cuenta web. Si luego compran en la página con el mismo documento, se les enlaza este cliente.</p>
           )}
           <div className="two">
             <Field label="Tipo de documento">

@@ -23,7 +23,7 @@ from django.core.files import File
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from account.models import Categoria, Cliente, Producto
+from account.models import Categoria, Producto
 
 User = get_user_model()
 IMAGENES = Path(__file__).resolve().parents[2] / 'static' / 'images'
@@ -88,11 +88,7 @@ class Command(BaseCommand):
             if creado:
                 cliente.set_password(clave_cliente)
                 cliente.save()
-                Cliente.objects.get_or_create(usuario=cliente, defaults={
-                    'nombres': 'Laura', 'apellidos': 'Pérez', 'correo': 'cliente@goldbracelets.com',
-                    'tipo_documento': 'CC', 'numero_documento': '1000000001', 'telefono': '3001234567',
-                    'direccion': 'Calle 10 # 5-20', 'ciudad': 'Cali', 'departamento': 'Valle del Cauca',
-                })
+                # Es USUARIO; se vuelve CLIENTE cuando haga su primera compra.
         else:
             self._bloquear_si_clave_publica('cliente', 'Cliente123')
 

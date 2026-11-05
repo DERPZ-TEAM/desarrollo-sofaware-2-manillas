@@ -59,19 +59,17 @@ class BaseAPITest(APITestCase):
 
 class AutenticacionTests(BaseAPITest):
 
-    def test_registro_crea_cliente_con_rol(self):
+    def test_registro_crea_usuario_pero_no_cliente(self):
         r = self.client.post('/api/auth/registro/', {
             'username': 'nuevo_user', 'email': 'nuevo@gb.com', 'primer_nombre': 'ana',
             'apellidos': 'gómez', 'password': 'Segura2026x', 'password2': 'Segura2026x',
-            'tipo_documento': 'CC', 'numero_documento': '1.098.765.432',
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['user']['rol'], 'cliente')
         self.assertEqual(r.data['user']['first_name'], 'Ana')
-        # Usuario (cuenta) y cliente (persona) quedan separados pero enlazados
-        cliente = Cliente.objects.get(usuario__username='nuevo_user')
-        self.assertEqual(cliente.numero_documento, '1098765432')
-        self.assertEqual(r.data['user']['numero_documento'], '1098765432')
+        # Registrarse crea el USUARIO; será CLIENTE cuando compre
+        self.assertFalse(r.data['user']['es_cliente'])
+        self.assertFalse(Cliente.objects.filter(usuario__username='nuevo_user').exists())
 
     def test_registro_con_campos_vacios_muestra_errores(self):
         r = self.client.post('/api/auth/registro/', {}, format='json')
@@ -115,11 +113,14 @@ class AutenticacionTests(BaseAPITest):
 
     def test_actualizar_perfil(self):
         self.login('laura', 'Cliente123')
-        r = self.client.put('/api/auth/me/', {
-            'first_name': 'laura', 'last_name': 'pérez', 'email': 'laura@gb.com',
-            'telefono': '3001234567', 'ciudad': 'Cali',
-        }, format='json')
+        datos = {'first_name': 'laura', 'last_name': 'pérez', 'email': 'laura@gb.com',
+                 'telefono': '3001234567', 'ciudad': 'Cali'}
+        r = self.client.put('/api/auth/me/', datos, format='json')
         self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['last_name'], 'Pérez')
+        self.assertFalse(r.data['es_cliente'])            # aún no compra: no se le crea cliente
+        Cliente.objects.create(usuario=self.cliente, nombres='Laura', numero_documento='1012345678')
+        r = self.client.put('/api/auth/me/', datos, format='json')
         self.assertEqual(r.data['telefono'], '3001234567')
         self.assertEqual(r.data['ciudad'], 'Cali')
 
@@ -329,42 +330,75 @@ class PruebaCompletaTests(BaseAPITest):
 class ClientesYPapeleraTests(BaseAPITest):
     """Usuario y cliente separados + borrado lógico (papelera)."""
 
-    def registro(self, **extra):
-        datos = {'username': 'nueva', 'email': 'nueva@gb.com', 'primer_nombre': 'Sofia', 'apellidos': 'Lopez',
-                 'password': 'Segura2026x', 'password2': 'Segura2026x', 'tipo_documento': 'CC',
-                 'numero_documento': '1111111111'}
-        datos.update(extra)
-        return self.client.post('/api/auth/registro/', datos, format='json')
+    def comprar(self, usuario, clave, numero='1111111111'):
+        """Inicia sesión, agrega un producto y confirma la compra con ese documento."""
+        self.login(usuario, clave)
+        self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
+        envio = dict(CompraTests.ENVIO, numero_documento=numero)
+        return self.client.post('/api/checkout/', envio, format='json')
 
     def test_admin_no_es_cliente(self):
         self.assertFalse(Cliente.objects.filter(usuario=self.admin).exists())
 
-    def test_admin_registra_cliente_sin_cuenta_y_luego_se_enlaza(self):
+    def test_usuario_se_vuelve_cliente_en_su_primera_compra(self):
+        self.assertFalse(Cliente.objects.filter(usuario=self.cliente).exists())
+        r = self.comprar('laura', 'Cliente123')
+        self.assertEqual(r.status_code, 201, r.data)
+        cliente = Cliente.objects.get(usuario=self.cliente)
+        self.assertEqual(cliente.numero_documento, '1111111111')
+        self.assertEqual(cliente.telefono, CompraTests.ENVIO['telefono_contacto'])
+        self.assertTrue(self.client.get('/api/auth/me/').data['es_cliente'])
+
+    def test_compra_fallida_no_crea_cliente(self):
+        self.login('laura', 'Cliente123')
+        self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
+        Producto.objects.filter(pk=self.prod.pk).update(stock=0)          # otro compró la última unidad
+        r = self.client.post('/api/checkout/', CompraTests.ENVIO, format='json')
+        self.assertEqual(r.status_code, 400)                                # ROLLBACK de toda la compra
+        self.assertFalse(Cliente.objects.filter(usuario=self.cliente).exists())
+
+    def test_cliente_del_local_se_enlaza_al_comprar_en_la_web(self):
         self.login('admin', 'AdminGold123', admin=True)
         r = self.client.post('/api/admin/clientes/', {
-            'tipo_documento': 'CC', 'numero_documento': '1111111111', 'nombres': 'sofia', 'apellidos': 'lopez',
+            'tipo_documento': 'CC', 'numero_documento': '1111111111', 'nombres': 'laura', 'apellidos': 'perez',
             'telefono': '3109998877',
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertFalse(r.data['tiene_cuenta'])
         presencial = Cliente.objects.get(numero_documento='1111111111')
-        self.client.credentials()
-        r = self.registro()
+        r = self.comprar('laura', 'Cliente123')
         self.assertEqual(r.status_code, 201, r.data)
         presencial.refresh_from_db()
-        self.assertEqual(presencial.usuario.username, 'nueva')        # mismo cliente, no uno duplicado
+        self.assertEqual(presencial.usuario, self.cliente)              # mismo cliente, no uno duplicado
         self.assertEqual(presencial.telefono, '3109998877')
         self.assertEqual(Cliente.objects.filter(numero_documento='1111111111').count(), 1)
 
-    def test_documento_repetido_con_cuenta(self):
-        self.assertEqual(self.registro().status_code, 201)
-        r = self.registro(username='otra', email='otra@gb.com')
+    def test_documento_de_otra_cuenta_se_rechaza(self):
+        self.assertEqual(self.comprar('laura', 'Cliente123').status_code, 201)
+        User.objects.create_user('pedro', 'pedro@gb.com', 'Cliente123')
+        r = self.comprar('pedro', 'Cliente123')
         self.assertEqual(r.status_code, 400)
-        self.assertIn('numero_documento', r.data['errors'])
+        self.assertIn('otra cuenta', r.data['detail'])
 
     def test_documento_con_formato_invalido(self):
-        r = self.registro(numero_documento='12ab')
+        r = self.comprar('laura', 'Cliente123', numero='12ab')
         self.assertEqual(r.status_code, 400)
+
+    def test_admin_ve_usuarios_y_cuales_son_clientes(self):
+        self.comprar('laura', 'Cliente123')
+        User.objects.create_user('pedro', 'pedro@gb.com', 'Cliente123')
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.client.get('/api/admin/usuarios/')
+        self.assertEqual(r.status_code, 200)
+        por_nombre = {u['username']: u for u in r.data}
+        self.assertTrue(por_nombre['laura']['es_cliente'])
+        self.assertEqual(por_nombre['laura']['total_pedidos'], 1)
+        self.assertFalse(por_nombre['pedro']['es_cliente'])
+        self.assertEqual(por_nombre['admin']['rol'], 'admin')
+        r = self.client.get('/api/admin/usuarios/?es_cliente=no')
+        self.assertEqual({u['username'] for u in r.data}, {'admin', 'pedro'})
+        self.login('laura', 'Cliente123')
+        self.assertEqual(self.client.get('/api/admin/usuarios/').status_code, 403)
 
     def test_pedido_queda_a_nombre_del_cliente(self):
         self.login('laura', 'Cliente123')

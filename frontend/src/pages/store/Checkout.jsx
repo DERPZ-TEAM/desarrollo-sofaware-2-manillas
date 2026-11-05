@@ -97,7 +97,7 @@ export default function Checkout() {
                     {TIPOS_DOCUMENTO.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Número de documento" error={errors.numero_documento} hint="Lo pedimos una sola vez, para el comprobante.">
+                <Field label="Número de documento" error={errors.numero_documento} hint="Solo en tu primera compra: con ella quedas registrado como cliente.">
                   <input value={form.numero_documento} onChange={(e) => set('numero_documento', e.target.value)} />
                 </Field>
               </div>

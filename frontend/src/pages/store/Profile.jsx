@@ -89,32 +89,36 @@ export default function Profile() {
 
       {tab === 'datos' && (
         <form className="panel narrow" onSubmit={guardar} noValidate>
-          {!user.numero_documento && (
-            <p className="hint-box">Completa tu documento: lo pedimos para emitir el comprobante de tus compras.</p>
-          )}
-          <div className="two">
-            <Field label="Tipo de documento">
-              <select value={form.tipo_documento} onChange={(e) => set('tipo_documento', e.target.value)}>
-                {TIPOS_DOCUMENTO.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </Field>
-            <Field label="Número de documento" error={errors.numero_documento}>
-              <input value={form.numero_documento} onChange={(e) => set('numero_documento', e.target.value)} />
-            </Field>
-          </div>
+          <h3>Datos de tu cuenta</h3>
           <div className="two">
             <Field label="Nombre" error={errors.first_name}><input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} /></Field>
             <Field label="Apellidos" error={errors.last_name}><input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} /></Field>
           </div>
-          <div className="two">
-            <Field label="Correo" error={errors.email}><input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} /></Field>
-            <Field label="Teléfono" error={errors.telefono}><input value={form.telefono} onChange={(e) => set('telefono', e.target.value)} /></Field>
-          </div>
-          <Field label="Dirección de envío"><input value={form.direccion} onChange={(e) => set('direccion', e.target.value)} /></Field>
-          <div className="two">
-            <Field label="Ciudad"><input value={form.ciudad} onChange={(e) => set('ciudad', e.target.value)} /></Field>
-            <Field label="Departamento"><input value={form.departamento} onChange={(e) => set('departamento', e.target.value)} /></Field>
-          </div>
+          <Field label="Correo" error={errors.email}><input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} /></Field>
+
+          <h3>Datos de comprador</h3>
+          {!user.es_cliente ? (
+            <p className="hint-box">Aún no has comprado. Tu documento, teléfono y dirección se piden en tu primera compra y quedan guardados para las siguientes.</p>
+          ) : (
+            <>
+              <div className="two">
+                <Field label="Tipo de documento">
+                  <select value={form.tipo_documento} onChange={(e) => set('tipo_documento', e.target.value)}>
+                    {TIPOS_DOCUMENTO.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Número de documento" error={errors.numero_documento}>
+                  <input value={form.numero_documento} onChange={(e) => set('numero_documento', e.target.value)} />
+                </Field>
+              </div>
+              <Field label="Teléfono" error={errors.telefono}><input value={form.telefono} onChange={(e) => set('telefono', e.target.value)} /></Field>
+              <Field label="Dirección de envío"><input value={form.direccion} onChange={(e) => set('direccion', e.target.value)} /></Field>
+              <div className="two">
+                <Field label="Ciudad"><input value={form.ciudad} onChange={(e) => set('ciudad', e.target.value)} /></Field>
+                <Field label="Departamento"><input value={form.departamento} onChange={(e) => set('departamento', e.target.value)} /></Field>
+              </div>
+            </>
+          )}
           <button className="btn btn-dark">Actualizar información</button>
         </form>
       )}

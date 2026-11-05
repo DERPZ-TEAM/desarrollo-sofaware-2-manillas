@@ -9,6 +9,7 @@ const LINKS = [
   { to: '/admin/inventario', label: 'Inventario', icon: '▦' },
   { to: '/admin/pedidos', label: 'Pedidos', icon: '◎' },
   { to: '/admin/clientes', label: 'Clientes', icon: '◉' },
+  { to: '/admin/usuarios', label: 'Usuarios', icon: '○' },
   { to: '/admin/reportes', label: 'Reportes', icon: '▲' },
   { to: '/admin/papelera', label: 'Papelera', icon: '⌫' },
 ]

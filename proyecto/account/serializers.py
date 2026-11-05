@@ -90,11 +90,14 @@ def cliente_de(user):
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
-    """La CUENTA (usuario) y, si la tiene, los datos de su CLIENTE."""
-    CAMPOS_CLIENTE = ('telefono', 'direccion', 'ciudad', 'departamento', 'tipo_documento', 'numero_documento')
+    """La CUENTA (usuario) y, si ya compró, los datos de su CLIENTE.
 
+    Un usuario solo es cliente cuando hace su primera compra (o si ya había
+    comprado en el local). Mientras tanto es_cliente = False.
+    """
     rol = serializers.SerializerMethodField()
     cliente_id = serializers.SerializerMethodField()
+    es_cliente = serializers.SerializerMethodField()
     telefono = serializers.SerializerMethodField()
     direccion = serializers.SerializerMethodField()
     ciudad = serializers.SerializerMethodField()
@@ -105,7 +108,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            'id', 'username', 'email', 'first_name', 'last_name', 'is_staff', 'rol', 'cliente_id',
+            'id', 'username', 'email', 'first_name', 'last_name', 'is_staff', 'rol', 'cliente_id', 'es_cliente',
             'tipo_documento', 'numero_documento', 'telefono', 'direccion', 'ciudad', 'departamento',
             'date_joined', 'last_login',
         )
@@ -116,6 +119,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def get_cliente_id(self, obj):
         cliente = cliente_de(obj)
         return cliente.id if cliente else None
+
+    def get_es_cliente(self, obj):
+        return cliente_de(obj) is not None
 
     def _dato(self, obj, campo):
         cliente = cliente_de(obj)
@@ -138,6 +144,25 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     def get_numero_documento(self, obj):
         return self._dato(obj, 'numero_documento')
+
+
+class UsuarioAdminSerializer(serializers.ModelSerializer):
+    """Las CUENTAS, como las ve el administrador: todos son usuarios; algunos ya son clientes."""
+    rol = serializers.SerializerMethodField()
+    es_cliente = serializers.SerializerMethodField()
+    cliente_id = serializers.IntegerField(source='cliente.id', read_only=True, default=None)
+    total_pedidos = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'rol', 'is_active',
+                  'es_cliente', 'cliente_id', 'total_pedidos', 'date_joined', 'last_login')
+
+    def get_rol(self, obj):
+        return Perfil.ROL_ADMIN if es_admin(obj) else Perfil.ROL_CLIENTE
+
+    def get_es_cliente(self, obj):
+        return cliente_de(obj) is not None
 
 
 class ClienteSerializer(serializers.ModelSerializer):
@@ -188,17 +213,17 @@ class ClienteSerializer(serializers.ModelSerializer):
 
 
 class RegistroSerializer(serializers.Serializer):
-    """HU-US-001: registro de clientes."""
+    """HU-US-001: registro de USUARIOS (la cuenta para entrar a la tienda).
+
+    Registrarse NO crea un cliente: la persona se vuelve cliente cuando compra
+    (ver services.cliente_para_compra).
+    """
     username = serializers.CharField(min_length=4, max_length=30)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
     password2 = serializers.CharField(write_only=True)
     primer_nombre = serializers.CharField(max_length=40)
     apellidos = serializers.CharField(max_length=80)
-    tipo_documento = serializers.ChoiceField(choices=Cliente.TIPOS_DOCUMENTO, default='CC')
-    numero_documento = serializers.CharField(max_length=20, error_messages={
-        'required': 'Escribe tu número de documento.', 'blank': 'Escribe tu número de documento.'})
-    telefono = serializers.CharField(required=False, allow_blank=True, default='')
 
     def validate_username(self, value):
         value = value.strip()
@@ -220,20 +245,9 @@ class RegistroSerializer(serializers.Serializer):
     def validate_apellidos(self, value):
         return limpiar_nombre(value, 'tus apellidos')
 
-    def validate_telefono(self, value):
-        return limpiar_telefono(value)
-
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({'password2': 'Las contraseñas no coinciden.'})
-        attrs['numero_documento'] = limpiar_documento(attrs['tipo_documento'], attrs['numero_documento'])
-        existente = Cliente.todos.filter(
-            tipo_documento=attrs['tipo_documento'], numero_documento=attrs['numero_documento'],
-        ).first()
-        if existente and existente.usuario_id:
-            raise serializers.ValidationError({'numero_documento': 'Ya existe una cuenta con ese documento.'})
-        # Si ya compró en el local (cliente sin cuenta), le enlazamos la cuenta nueva
-        attrs['cliente_existente'] = existente
         usuario_temporal = User(
             username=attrs['username'], email=attrs['email'],
             first_name=attrs['primer_nombre'], last_name=attrs['apellidos'],
@@ -244,30 +258,15 @@ class RegistroSerializer(serializers.Serializer):
             raise serializers.ValidationError({'password': list(exc.messages)})
         return attrs
 
-    @transaction.atomic
     def create(self, validated_data):
-        """Crea en UNA transacción: el usuario (cuenta), su perfil y su cliente."""
-        user = User.objects.create_user(
+        """Crea el usuario; la señal post_save le crea su Perfil con rol 'cliente'."""
+        return User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
             password=validated_data['password'],
             first_name=validated_data['primer_nombre'],
             last_name=validated_data['apellidos'],
         )
-        # La señal post_save ya creó el Perfil con rol 'cliente'
-        cliente = validated_data.get('cliente_existente') or Cliente(
-            tipo_documento=validated_data['tipo_documento'],
-            numero_documento=validated_data['numero_documento'],
-        )
-        cliente.usuario = user
-        cliente.nombres = validated_data['primer_nombre']
-        cliente.apellidos = validated_data['apellidos']
-        cliente.correo = validated_data['email']
-        cliente.telefono = validated_data.get('telefono', '') or cliente.telefono
-        cliente.eliminado_en = None
-        cliente.save()
-        user.refresh_from_db()
-        return user
 
 
 class LoginSerializer(serializers.Serializer):
@@ -283,7 +282,11 @@ class LoginSerializer(serializers.Serializer):
 
 
 class ActualizarPerfilSerializer(serializers.Serializer):
-    """HU-US-004: el cliente actualiza sus datos personales."""
+    """HU-US-004: el usuario actualiza sus datos.
+
+    Nombre y correo son de la CUENTA. Documento, teléfono y dirección son del
+    CLIENTE, así que solo se guardan si la persona ya compró alguna vez.
+    """
     first_name = serializers.CharField(max_length=40)
     last_name = serializers.CharField(max_length=80)
     email = serializers.EmailField()
@@ -312,13 +315,11 @@ class ActualizarPerfilSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         numero = (attrs.get('numero_documento') or '').strip()
-        if numero:
+        propio = cliente_de(self.context['request'].user)
+        if numero and propio:
             tipo = attrs.get('tipo_documento', 'CC')
             numero = limpiar_documento(tipo, numero)
-            propio = cliente_de(self.context['request'].user)
-            otros = Cliente.todos.filter(tipo_documento=tipo, numero_documento=numero)
-            if propio:
-                otros = otros.exclude(pk=propio.pk)
+            otros = Cliente.todos.filter(tipo_documento=tipo, numero_documento=numero).exclude(pk=propio.pk)
             if otros.exists():
                 raise serializers.ValidationError({'numero_documento': 'Ese documento ya está registrado.'})
             attrs['numero_documento'] = numero
@@ -332,7 +333,10 @@ class ActualizarPerfilSerializer(serializers.Serializer):
         user.last_name = datos['last_name']
         user.email = datos['email']
         user.save(update_fields=['first_name', 'last_name', 'email'])
-        cliente = cliente_de(user) or Cliente(usuario=user)
+        cliente = cliente_de(user)
+        if cliente is None:          # aún no ha comprado: solo es usuario
+            user.refresh_from_db()
+            return user
         cliente.nombres = datos['first_name']
         cliente.apellidos = datos['last_name']
         cliente.correo = datos['email']

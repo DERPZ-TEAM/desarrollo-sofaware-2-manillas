@@ -505,3 +505,78 @@ class ClientesYPapeleraTests(BaseAPITest):
         self.client.post(f'/api/admin/papelera/clientes/{cliente.id}/')
         self.cliente.refresh_from_db()
         self.assertTrue(self.cliente.is_active)
+
+
+class ReferenciasTests(BaseAPITest):
+    """Referencias (SKU) de producto: TIPO-QUILATES-COLOR-PIEDRA-NNN."""
+
+    ANILLO = {'nombre': 'Anillo Solitario', 'descripcion': 'Anillo de oro blanco con diamante central.',
+              'precio': '890000', 'stock': 4, 'tipo_pieza': 'anillo', 'quilates': 18, 'tipo_oro': 'blanco',
+              'piedra': 'diamante'}
+
+    def crear(self, **extra):
+        datos = dict(self.ANILLO, categoria=self.cat.id)
+        datos.update(extra)
+        return self.client.post('/api/productos/', datos, format='json')
+
+    def test_se_genera_sola_y_el_consecutivo_avanza(self):
+        self.assertEqual(self.prod.referencia, 'OT-AM-SO-001')            # creado sin tipo ni piedra
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.crear()
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['referencia'], 'AN-18K-BL-DI-001')
+        self.assertEqual(self.crear(nombre='Anillo Solitario II').data['referencia'], 'AN-18K-BL-DI-002')
+        sin_quilates = self.crear(nombre='Reloj Dorado', tipo_pieza='reloj', quilates=None, tipo_oro='laminado', piedra='')
+        self.assertEqual(sin_quilates.data['referencia'], 'RL-LM-SO-001')
+
+    def test_referencia_propia_se_normaliza_y_no_se_repite(self):
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.crear(referencia='  mo 01 ')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['referencia'], 'MO-01')
+        r = self.crear(nombre='Otro anillo', referencia='MO-01')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('referencia', r.data['errors'])
+        self.assertEqual(self.crear(nombre='Otro anillo', referencia='MO#01').status_code, 400)
+
+    def test_editar_sin_referencia_la_conserva(self):
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.client.patch(f'/api/productos/{self.prod.id}/', {'precio': '120000', 'referencia': ''}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['referencia'], 'OT-AM-SO-001')            # la etiqueta impresa no cambia
+
+    def test_buscar_por_referencia(self):
+        self.login('admin', 'AdminGold123', admin=True)
+        self.crear()
+        r = self.client.get('/api/productos/?q=an-18k&limite=10')
+        self.assertEqual([p['referencia'] for p in r.data], ['AN-18K-BL-DI-001'])
+        r = self.client.get('/api/productos/?referencia=an-18k-bl-di-001')   # lector de códigos
+        self.assertEqual(len(r.data), 1)
+        self.assertEqual(self.client.get('/api/productos/?limite=abc').status_code, 400)
+
+    def test_sugerir_referencia_solo_admin(self):
+        url = '/api/productos/sugerir-referencia/?tipo_pieza=anillo&quilates=18&tipo_oro=blanco&piedra=diamante'
+        self.login('laura', 'Cliente123')
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.login('admin', 'AdminGold123', admin=True)
+        self.assertEqual(self.client.get(url).data['referencia'], 'AN-18K-BL-DI-001')
+        self.crear()
+        self.assertEqual(self.client.get(url).data['referencia'], 'AN-18K-BL-DI-002')
+
+    def test_la_venta_guarda_la_referencia(self):
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.client.post('/api/admin/ventas-local/', {
+            'cliente': {'tipo_documento': 'CC', 'numero_documento': '1111111111', 'nombres': 'Ana'},
+            'items': [{'producto_id': self.prod.id, 'cantidad': 1}], 'metodo_pago': 'efectivo',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['items'][0]['referencia'], 'OT-AM-SO-001')
+
+    def test_deducir_tipo_y_piedra_de_productos_existentes(self):
+        from account import referencias as ref
+        self.assertEqual(ref.inferir_tipo('Aretes', 'Argollas Doradas Medianas'), 'arete')
+        self.assertEqual(ref.inferir_tipo('Anillos', 'Argolla de Matrimonio'), 'anillo')
+        self.assertEqual(ref.inferir_tipo('', 'Reloj Dorado Ejecutivo'), 'reloj')
+        self.assertEqual(ref.inferir_piedra('pulsera', 'Pulsera Tejida Esmeralda', 'hilo verde'), '')
+        self.assertEqual(ref.inferir_piedra('brazalete', 'Brazalete Rosa', 'con cinco circonias'), 'circonia')
+        self.assertEqual(ref.siguiente('AN-18K-BL-DI', ['AN-18K-BL-DI-007', 'AN-18K-BL-DI-X']), 'AN-18K-BL-DI-008')

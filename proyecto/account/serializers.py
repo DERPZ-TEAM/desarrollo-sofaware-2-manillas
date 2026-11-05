@@ -16,6 +16,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
 
+from . import referencias
 from .models import Carrito, Categoria, Cliente, ItemCarrito, ItemPedido, Pedido, Perfil, Producto
 from .permissions import es_admin
 from .services import calcular_totales
@@ -421,14 +422,17 @@ class ProductoListSerializer(serializers.ModelSerializer):
     imagen_url = serializers.SerializerMethodField()
     tipo_oro_display = serializers.CharField(source='get_tipo_oro_display', read_only=True)
     elaboracion_display = serializers.CharField(source='get_elaboracion_display', read_only=True)
+    tipo_pieza_display = serializers.CharField(source='get_tipo_pieza_display', read_only=True)
+    piedra_display = serializers.CharField(source='get_piedra_display', read_only=True)
     estado_stock = serializers.CharField(read_only=True)
     total_vendido = serializers.IntegerField(read_only=True, required=False)
 
     class Meta:
         model = Producto
         fields = (
-            'id', 'nombre', 'slug', 'descripcion', 'precio', 'stock', 'stock_minimo',
+            'id', 'referencia', 'nombre', 'slug', 'descripcion', 'precio', 'stock', 'stock_minimo',
             'estado_stock', 'imagen_url', 'activo', 'categoria', 'categoria_nombre',
+            'tipo_pieza', 'tipo_pieza_display', 'piedra', 'piedra_display',
             'tipo_oro', 'tipo_oro_display', 'quilates', 'peso_gramos', 'talla_cm',
             'elaboracion', 'elaboracion_display', 'eliminado_en', 'creado', 'actualizado', 'total_vendido',
         )
@@ -450,13 +454,15 @@ class ProductoWriteSerializer(serializers.ModelSerializer):
         },
     )
     quitar_imagen = serializers.BooleanField(write_only=True, required=False, default=False)
+    # Vacía = el sistema la genera (TIPO-QUILATES-COLOR-PIEDRA-NNN). Al editar, vacía = no cambia.
+    referencia = serializers.CharField(required=False, allow_blank=True, max_length=60)
 
     class Meta:
         model = Producto
         fields = (
-            'id', 'nombre', 'descripcion', 'precio', 'stock', 'stock_minimo', 'imagen',
-            'quitar_imagen', 'activo', 'categoria', 'tipo_oro', 'quilates', 'peso_gramos',
-            'talla_cm', 'elaboracion',
+            'id', 'referencia', 'nombre', 'descripcion', 'precio', 'stock', 'stock_minimo', 'imagen',
+            'quitar_imagen', 'activo', 'categoria', 'tipo_pieza', 'piedra', 'tipo_oro', 'quilates',
+            'peso_gramos', 'talla_cm', 'elaboracion',
         )
         extra_kwargs = {
             'precio': {'error_messages': {'invalid': 'El precio debe ser un número.'}},
@@ -479,6 +485,22 @@ class ProductoWriteSerializer(serializers.ModelSerializer):
         value = ' '.join(value.split())
         if len(value) < 3:
             raise serializers.ValidationError('El nombre del producto es muy corto.')
+        return value
+
+    def validate_referencia(self, value):
+        value = referencias.normalizar(value)
+        if not value:
+            return ''
+        if not referencias.es_valida(value):
+            raise serializers.ValidationError(
+                'Usa de 3 a 40 letras, números y guiones. Ej.: AN-18K-BL-DI-001.')
+        otro = Producto.todos.filter(referencia=value)
+        if self.instance is not None:
+            otro = otro.exclude(pk=self.instance.pk)
+        otro = otro.first()
+        if otro:
+            donde = ' (está en la Papelera)' if otro.eliminado_en else ''
+            raise serializers.ValidationError(f'Esa referencia ya es de "{otro.nombre}"{donde}.')
         return value
 
     def validate_descripcion(self, value):
@@ -525,6 +547,8 @@ class ProductoWriteSerializer(serializers.ModelSerializer):
     def _guardar(self, instancia, datos):
         quitar = datos.pop('quitar_imagen', False)
         imagen_nueva = datos.pop('imagen', None)
+        if not datos.get('referencia'):
+            datos.pop('referencia', None)       # vacía: se genera (nuevo) o se conserva (edición)
         imagen_vieja = instancia.imagen.name if instancia.imagen else None
         for campo, valor in datos.items():
             setattr(instancia, campo, valor)
@@ -649,7 +673,7 @@ class ItemPedidoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ItemPedido
-        fields = ('id', 'producto', 'nombre', 'precio', 'cantidad', 'subtotal')
+        fields = ('id', 'producto', 'referencia', 'nombre', 'precio', 'cantidad', 'subtotal')
 
 
 class PedidoSerializer(serializers.ModelSerializer):

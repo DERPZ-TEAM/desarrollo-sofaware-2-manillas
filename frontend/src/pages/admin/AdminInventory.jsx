@@ -46,10 +46,11 @@ export default function AdminInventory() {
       {data === null ? (error ? <Reintentar /> : <Loader />) : data.productos.length === 0 ? <EmptyState title="No hay productos en este estado" /> : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Producto</th><th>Categoría</th><th>Stock</th><th>Mínimo</th><th>Estado</th><th>Valor</th><th className="right">Ajustar stock</th></tr></thead>
+            <thead><tr><th>Referencia</th><th>Producto</th><th>Categoría</th><th>Stock</th><th>Mínimo</th><th>Estado</th><th>Valor</th><th className="right">Ajustar stock</th></tr></thead>
             <tbody>
               {data.productos.map((p) => (
                 <tr key={p.id}>
+                  <td><code>{p.referencia}</code></td>
                   <td><b>{p.nombre}</b></td>
                   <td>{p.categoria_nombre || '—'}</td>
                   <td>{p.stock}</td>

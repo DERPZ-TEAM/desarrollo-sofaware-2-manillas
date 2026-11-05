@@ -429,3 +429,27 @@ input:focus, select:focus, textarea:focus { border-color: var(--gold); box-shado
   .admin-shell { display: block; }
   .receipt { box-shadow: none; border: 0; }
 }
+
+/* ---------- Referencias de producto ---------- */
+code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .85em; letter-spacing: .02em; white-space: nowrap; }
+.detail-ref { margin: -6px 0 10px; color: var(--muted); font-size: .85rem; letter-spacing: .06em; }
+.input-con-boton { display: flex; gap: 8px; }
+.input-con-boton input { flex: 1; min-width: 0; }
+.input-cantidad { width: 80px; }
+.buscador { position: relative; }
+.buscador-resultados {
+  position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none;
+  background: var(--white); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 30px rgba(0, 0, 0, .12);
+  max-height: 320px; overflow-y: auto;
+}
+.buscador-resultados li { margin: 0; }
+.buscador-resultados li.muted { padding: 10px 12px; }
+.buscador-resultados button {
+  width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: left;
+  padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; font: inherit; color: inherit;
+}
+.buscador-resultados button:hover, .buscador-resultados button:focus { background: var(--gold-soft); outline: none; }
+.buscador-resultados small { color: var(--muted); white-space: nowrap; }
+@media (max-width: 600px) {
+  .buscador-resultados button { grid-template-columns: 1fr; gap: 2px; }
+}

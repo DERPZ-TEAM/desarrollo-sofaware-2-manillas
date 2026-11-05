@@ -31,6 +31,7 @@ export default function Product() {
   const ficha = [
     ['Material', p.tipo_oro_display],
     ['Quilates', p.quilates && `${p.quilates}k`],
+    ['Piedra', p.piedra ? p.piedra_display : 'Sin piedra (solo oro)'],
     ['Peso', p.peso_gramos && `${Number(p.peso_gramos)} g`],
     ['Talla', p.talla_cm && `${Number(p.talla_cm)} cm`],
     ['Elaboración', p.elaboracion_display],
@@ -48,6 +49,7 @@ export default function Product() {
         <Link to="/catalogo" className="back">← Catálogo</Link>
         <span className="eyebrow">{p.categoria_nombre || 'GoldBracelets'}</span>
         <h1>{p.nombre}</h1>
+        <p className="detail-ref">Ref. {p.referencia}</p>
         <p className="detail-price">{money(p.precio)}</p>
         <p className="detail-desc">{p.descripcion}</p>
 

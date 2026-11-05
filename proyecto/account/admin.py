@@ -32,9 +32,9 @@ class CategoriaAdmin(admin.ModelAdmin):
 
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'categoria', 'precio', 'stock', 'stock_minimo', 'activo', 'eliminado_en')
-    list_filter = ('activo', 'categoria', 'tipo_oro')
-    search_fields = ('nombre',)
+    list_display = ('referencia', 'nombre', 'categoria', 'precio', 'stock', 'stock_minimo', 'activo', 'eliminado_en')
+    list_filter = ('activo', 'categoria', 'tipo_pieza', 'tipo_oro', 'piedra')
+    search_fields = ('referencia', 'nombre')
 
     def get_queryset(self, request):
         return Producto.todos.all()
@@ -43,7 +43,7 @@ class ProductoAdmin(admin.ModelAdmin):
 class ItemPedidoInline(admin.TabularInline):
     model = ItemPedido
     extra = 0
-    readonly_fields = ('producto', 'nombre', 'precio', 'cantidad')
+    readonly_fields = ('producto', 'referencia', 'nombre', 'precio', 'cantidad')
 
 
 @admin.register(Pedido)

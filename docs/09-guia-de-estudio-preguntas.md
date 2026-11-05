@@ -120,6 +120,9 @@ Una referencia a la columna dentro de la base de datos: la resta se hace en Post
 **28. ¿Qué es el problema N+1 y cómo lo evitan?**
 Hacer 1 consulta para la lista y N más para cada relación. Lo evitamos con `select_related` (JOIN) y `prefetch_related` (una consulta extra para todos).
 
+**¿Qué es la referencia de un producto y por qué no es la llave primaria?**
+Es el código de la etiqueta (SKU), por ejemplo `AN-18K-BL-DI-001`: Anillo, 18 quilates, oro BLanco, DIamante, n.º 001. Identifica el *tipo* de producto: las 100 pulseras iguales comparten referencia y el stock dice cuántas hay. No es la llave primaria porque el negocio puede cambiarla (reetiquetar) y la PK no debe cambiar nunca: la PK sigue siendo `id` y la referencia es una llave **candidata** con `UNIQUE`. Con un lector de código de barras se escanea en *Registrar venta en el local* y el producto se agrega al instante; buscar por el comienzo de la referencia usa índice, así que funciona igual con millones de productos.
+
 ## E. Imágenes
 
 **29. ¿Dónde se guardan las fotos y por qué?**
@@ -165,7 +168,7 @@ El plan gratis de Render "duerme" el servicio tras 15 minutos sin uso; la primer
 ## H. Calidad
 
 **40. ¿Cómo saben que funciona?**
-45 pruebas automáticas (`python manage.py test account`) que cubren registro, login, permisos, CRUD con imagen, filtros, carrito, checkout con descuento, rollback por falta de stock, estados de pedido, cancelación con devolución de stock y reportes. Además pruebas manuales del flujo completo en el navegador.
+52 pruebas automáticas (`python manage.py test account`) que cubren registro, login, permisos, CRUD con imagen, filtros, carrito, checkout con descuento, rollback por falta de stock, estados de pedido, cancelación con devolución de stock y reportes. Además pruebas manuales del flujo completo en el navegador.
 
 ---
 

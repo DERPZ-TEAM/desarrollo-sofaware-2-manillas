@@ -108,6 +108,14 @@ CREATE TABLE producto (
     peso_gramos   NUMERIC(7, 2) NULL,
     talla_cm      NUMERIC(5, 1) NULL,
     elaboracion   VARCHAR(10) NOT NULL DEFAULT '' CHECK (elaboracion IN ('', 'manual', 'maquina')),
+    -- REFERENCIA (SKU) de la etiqueta: TIPO-QUILATES-COLOR-PIEDRA-NNN, ej. AN-18K-BL-DI-001
+    -- Identifica el TIPO de producto (las 100 pulseras iguales comparten referencia; el stock dice cuántas hay).
+    tipo_pieza    VARCHAR(12) NOT NULL DEFAULT 'otro'
+                  CHECK (tipo_pieza IN ('pulsera', 'brazalete', 'cadena', 'arete', 'anillo', 'reloj', 'dije', 'otro')),
+    piedra        VARCHAR(12) NOT NULL DEFAULT ''       -- '' = solo oro
+                  CHECK (piedra IN ('', 'diamante', 'esmeralda', 'rubi', 'zafiro', 'circonia', 'cuarzo', 'perla', 'otra')),
+    referencia    VARCHAR(40) NOT NULL UNIQUE,          -- UNIQUE crea el índice; en PostgreSQL Django crea además
+                                                        -- uno "_like" para buscar rápido por el comienzo (LIKE 'AN-18K%')
     eliminado_en  TIMESTAMPTZ NULL,                     -- borrado lógico (Papelera)
     creado        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     actualizado   TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -177,6 +185,7 @@ CREATE TABLE item_pedido (
     pedido_id     BIGINT NOT NULL REFERENCES pedido (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,    -- FK
     producto_id   BIGINT NULL     REFERENCES producto (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED, -- FK
     nombre        VARCHAR(120) NOT NULL,
+    referencia    VARCHAR(40)  NOT NULL DEFAULT '',     -- copia de la referencia al momento de la venta
     precio        NUMERIC(12, 2) NOT NULL,
     cantidad      INTEGER NOT NULL CHECK (cantidad >= 1)
 );

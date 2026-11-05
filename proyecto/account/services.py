@@ -183,30 +183,45 @@ def crear_pedido_desde_carrito(usuario, datos_envio, documento=None):
 
     cliente = cliente_para_compra(usuario, documento)
 
-    ids = sorted(i.producto_id for i in items)          # orden fijo evita bloqueos cruzados
-    productos = {p.id: p for p in Producto.objects.select_for_update().filter(pk__in=ids).order_by('id')}
+    lineas = _bloquear_y_validar([(i.producto_id, i.cantidad) for i in items],
+                                 ' Quítalo del carrito para continuar.')
+    pedido = _guardar_pedido(cliente, usuario, lineas, Pedido.PENDIENTE, datos_envio)
+    carrito.items.all().delete()
+    return pedido
 
+
+def _bloquear_y_validar(cantidades, sugerencia=''):
+    """Bloquea las filas de los productos y valida que se puedan vender.
+
+    cantidades = [(producto_id, cantidad), ...]. Devuelve [(producto, cantidad), ...].
+    SELECT ... FOR UPDATE: mientras dure la transacción, nadie más puede vender
+    esas mismas unidades.
+    """
+    ids = sorted({pid for pid, _ in cantidades})        # orden fijo evita bloqueos cruzados
+    productos = {p.id: p for p in Producto.objects.select_for_update().filter(pk__in=ids).order_by('id')}
     lineas = []
-    for item in items:
-        producto = productos.get(item.producto_id)
+    for producto_id, cantidad in cantidades:
+        producto = productos.get(producto_id)
         if producto is None or not producto.activo:
             nombre = producto.nombre if producto else 'Un producto'
-            raise ErrorDeNegocio(f'{nombre} ya no está disponible. Quítalo del carrito para continuar.')
-        if producto.stock < item.cantidad:
-            raise ErrorDeNegocio(
-                f'Stock insuficiente de "{producto.nombre}": quedan {producto.stock} unidades.'
-            )
-        lineas.append((producto, item.cantidad))
+            raise ErrorDeNegocio(f'{nombre} ya no está disponible.{sugerencia}')
+        if producto.stock < cantidad:
+            raise ErrorDeNegocio(f'Stock insuficiente de "{producto.nombre}": quedan {producto.stock} unidades.')
+        lineas.append((producto, cantidad))
+    return lineas
 
+
+def _guardar_pedido(cliente, registrado_por, lineas, estado, datos):
+    """Crea el pedido con sus ítems (precio congelado) y descuenta el stock."""
     totales = calcular_totales([(p.precio, c) for p, c in lineas])
     pedido = Pedido.objects.create(
         cliente=cliente,
-        registrado_por=usuario,
+        registrado_por=registrado_por,
         subtotal=totales['subtotal'],
         descuento=totales['descuento'],
         total=totales['total'],
-        estado=Pedido.PENDIENTE,
-        **datos_envio,
+        estado=estado,
+        **datos,
     )
     ItemPedido.objects.bulk_create([
         ItemPedido(pedido=pedido, producto=p, nombre=p.nombre, precio=p.precio, cantidad=c)
@@ -215,8 +230,37 @@ def crear_pedido_desde_carrito(usuario, datos_envio, documento=None):
     for producto, cantidad in lineas:
         # F('stock') hace la resta DENTRO de PostgreSQL: UPDATE producto SET stock = stock - n
         Producto.objects.filter(pk=producto.pk).update(stock=F('stock') - cantidad)
-    carrito.items.all().delete()
     return pedido
+
+
+# ---------------------------------------------------------------------------
+# Venta en el local: el administrador registra lo que compró un cliente en la tienda física
+# ---------------------------------------------------------------------------
+@transaction.atomic
+def registrar_venta_local(admin, cliente, cantidades, metodo_pago, notas=''):
+    """Crea el pedido de una compra hecha en el local, en UNA transacción.
+
+    - Mismas reglas que la web: stock bloqueado y validado, descuento por volumen.
+    - Queda en estado ENTREGADO (el cliente se lleva la pieza en ese momento).
+    - registrado_por = el administrador que hizo la venta.
+    Si algo falla (por ejemplo, falta stock), no se guarda nada, ni siquiera el
+    cliente nuevo: así no quedan clientes sin compras.
+    """
+    if cliente.eliminado_en:
+        raise ErrorDeNegocio(f'"{cliente.nombre_completo}" está en la Papelera: restáuralo primero.')
+    juntas = {}
+    for producto_id, cantidad in cantidades:            # si repiten un producto, se suma
+        juntas[producto_id] = juntas.get(producto_id, 0) + cantidad
+    lineas = _bloquear_y_validar(list(juntas.items()))
+    return _guardar_pedido(cliente, admin, lineas, Pedido.ENTREGADO, {
+        'metodo_pago': metodo_pago,
+        'notas': notas,
+        'nombre_destinatario': cliente.nombre_completo,
+        'telefono_contacto': cliente.telefono,
+        'direccion_envio': 'Venta en el local',
+        'ciudad': cliente.ciudad,
+        'departamento': cliente.departamento,
+    })
 
 
 # ---------------------------------------------------------------------------

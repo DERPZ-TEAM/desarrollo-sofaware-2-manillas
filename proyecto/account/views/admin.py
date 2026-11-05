@@ -7,10 +7,11 @@ intenta entrar, la API responde 401/403 y no ejecuta nada.
 from datetime import date, datetime, time, timedelta
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import Count, DecimalField, F, Q, Sum, Value
 from django.db.models.functions import Coalesce, TruncDay, TruncMonth, TruncYear
 from django.utils import timezone
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -25,6 +26,8 @@ from ..serializers import (
     PedidoSerializer,
     ProductoListSerializer,
     UsuarioAdminSerializer,
+    VentaLocalSerializer,
+    limpiar_documento,
 )
 
 User = get_user_model()
@@ -140,17 +143,18 @@ class PedidoAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 # ---------------------------------------------------------------------------
 # Clientes (HU-US-005): la PERSONA que compra, tenga o no cuenta en la web
 # ---------------------------------------------------------------------------
-class ClienteAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
+class ClienteAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                           mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     """
     GET    /api/admin/clientes/?q=texto -> clientes en orden alfabético
-    POST   /api/admin/clientes/         -> registrar cliente SIN cuenta (venta en el local)
     PATCH  /api/admin/clientes/{id}/    -> editar sus datos
     DELETE /api/admin/clientes/{id}/    -> mover a la papelera (borrado lógico)
+    (No hay POST: un cliente nace con una compra. En el local se usa
+     POST /api/admin/ventas-local/, que crea el cliente y su pedido juntos.)
     """
     serializer_class = ClienteSerializer
     permission_classes = [EsAdministrador]
-    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+    http_method_names = ['get', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
         qs = Cliente.objects.select_related('usuario').annotate(
@@ -163,15 +167,49 @@ class ClienteAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixi
                            | Q(correo__icontains=q) | Q(usuario__username__icontains=q))
         return qs.order_by('nombres', 'apellidos')
 
-    def create(self, request, *args, **kwargs):
-        respuesta = super().create(request, *args, **kwargs)
-        respuesta.data['detail'] = 'Cliente registrado correctamente.'
-        return respuesta
-
     def destroy(self, request, *args, **kwargs):
         cliente = self.get_object()
         services.mover_a_papelera(cliente)
         return Response({'detail': f'"{cliente.nombre_completo}" se movió a la Papelera.'})
+
+
+@api_view(['POST'])
+@permission_classes([EsAdministrador])
+@transaction.atomic
+def venta_local_view(request):
+    """POST /api/admin/ventas-local/ -> registra una compra hecha en la tienda física.
+
+    Cuerpo: {cliente_id} o {cliente: {tipo_documento, numero_documento, nombres, ...}},
+            items: [{producto_id, cantidad}], metodo_pago, notas.
+    Si el documento ya es de un cliente, se usa ese (no se duplica).
+    Todo va en una transacción: si falta stock, no queda ni el pedido ni el cliente.
+    """
+    entrada = VentaLocalSerializer(data=request.data)
+    entrada.is_valid(raise_exception=True)
+    datos = entrada.validated_data
+
+    if datos.get('cliente_id'):
+        cliente = Cliente.todos.filter(pk=datos['cliente_id']).first()
+        if cliente is None:
+            raise ErrorDeNegocio('Ese cliente no existe.', 404)
+    else:
+        nuevo = datos['cliente']
+        tipo = nuevo.get('tipo_documento') or 'CC'
+        numero = limpiar_documento(tipo, str(nuevo.get('numero_documento') or ''))
+        cliente = Cliente.todos.filter(tipo_documento=tipo, numero_documento=numero).first()
+        if cliente is None:
+            ficha = ClienteSerializer(data={**nuevo, 'tipo_documento': tipo, 'numero_documento': numero})
+            ficha.is_valid(raise_exception=True)
+            cliente = ficha.save()
+
+    pedido = services.registrar_venta_local(
+        request.user, cliente, [(i['producto_id'], i['cantidad']) for i in datos['items']],
+        datos['metodo_pago'], datos.get('notas', ''),
+    )
+    pedido = Pedido.objects.select_related('cliente__usuario', 'registrado_por').prefetch_related('items').get(pk=pedido.pk)
+    respuesta = PedidoSerializer(pedido).data
+    respuesta['detail'] = f'Venta #{pedido.id} registrada a nombre de {cliente.nombre_completo}.'
+    return Response(respuesta, status=status.HTTP_201_CREATED)
 
 
 # ---------------------------------------------------------------------------

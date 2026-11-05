@@ -357,14 +357,54 @@ class ClientesYPapeleraTests(BaseAPITest):
         self.assertEqual(r.status_code, 400)                                # ROLLBACK de toda la compra
         self.assertFalse(Cliente.objects.filter(usuario=self.cliente).exists())
 
+    NUEVO = {'tipo_documento': 'CC', 'numero_documento': '1111111111', 'nombres': 'laura', 'apellidos': 'perez',
+             'telefono': '3109998877'}
+
+    def venta_local(self, cantidad=2, **extra):
+        datos = {'cliente': self.NUEVO, 'items': [{'producto_id': self.prod.id, 'cantidad': cantidad}],
+                 'metodo_pago': 'efectivo'}
+        datos.update(extra)
+        return self.client.post('/api/admin/ventas-local/', datos, format='json')
+
+    def test_venta_en_el_local_crea_cliente_y_pedido(self):
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.venta_local()
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['estado'], 'entregado')
+        self.assertEqual(r.data['registrado_por_username'], 'admin')
+        self.assertEqual(Decimal(r.data['total']), Decimal('200000'))
+        self.prod.refresh_from_db()
+        self.assertEqual(self.prod.stock, 8)                               # descontó el stock
+        cliente = Cliente.objects.get(numero_documento='1111111111')
+        self.assertIsNone(cliente.usuario)                                  # sin cuenta web
+        # Segunda compra con el mismo documento: mismo cliente, no uno nuevo
+        r = self.venta_local(cantidad=1)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(Cliente.objects.filter(numero_documento='1111111111').count(), 1)
+        self.assertEqual(cliente.pedidos.count(), 2)
+
+    def test_venta_local_sin_stock_no_crea_cliente(self):
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.venta_local(cantidad=50)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('Stock insuficiente', r.data['detail'])
+        self.assertFalse(Cliente.objects.filter(numero_documento='1111111111').exists())   # ROLLBACK
+        self.assertEqual(self.client.post('/api/admin/clientes/', self.NUEVO, format='json').status_code, 405)
+
+    def test_venta_local_validaciones(self):
+        self.login('admin', 'AdminGold123', admin=True)
+        self.assertEqual(self.venta_local(items=[]).status_code, 400)
+        self.assertEqual(self.venta_local(metodo_pago='bitcoin').status_code, 400)
+        self.login('laura', 'Cliente123')
+        self.assertEqual(self.venta_local().status_code, 403)
+        # efectivo es solo para el local
+        self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
+        r = self.client.post('/api/checkout/', dict(CompraTests.ENVIO, metodo_pago='efectivo'), format='json')
+        self.assertEqual(r.status_code, 400)
+
     def test_cliente_del_local_se_enlaza_al_comprar_en_la_web(self):
         self.login('admin', 'AdminGold123', admin=True)
-        r = self.client.post('/api/admin/clientes/', {
-            'tipo_documento': 'CC', 'numero_documento': '1111111111', 'nombres': 'laura', 'apellidos': 'perez',
-            'telefono': '3109998877',
-        }, format='json')
-        self.assertEqual(r.status_code, 201, r.data)
-        self.assertFalse(r.data['tiene_cuenta'])
+        self.assertEqual(self.venta_local().status_code, 201)
         presencial = Cliente.objects.get(numero_documento='1111111111')
         r = self.comprar('laura', 'Cliente123')
         self.assertEqual(r.status_code, 201, r.data)
@@ -372,6 +412,7 @@ class ClientesYPapeleraTests(BaseAPITest):
         self.assertEqual(presencial.usuario, self.cliente)              # mismo cliente, no uno duplicado
         self.assertEqual(presencial.telefono, '3109998877')
         self.assertEqual(Cliente.objects.filter(numero_documento='1111111111').count(), 1)
+        self.assertEqual(presencial.pedidos.count(), 2)                 # la del local + la de la web
 
     def test_documento_de_otra_cuenta_se_rechaza(self):
         self.assertEqual(self.comprar('laura', 'Cliente123').status_code, 201)

@@ -315,6 +315,7 @@ class Pedido(models.Model):
     }
 
     METODOS_PAGO = (
+        ('efectivo', 'Efectivo (en el local)'),
         ('contraentrega', 'Pago contra entrega'),
         ('transferencia', 'Transferencia bancaria'),
         ('nequi', 'Nequi / Daviplata'),

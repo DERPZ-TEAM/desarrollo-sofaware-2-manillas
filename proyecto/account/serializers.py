@@ -595,6 +595,27 @@ class CarritoSerializer(serializers.ModelSerializer):
 # ===========================================================================
 # PEDIDOS
 # ===========================================================================
+class LineaVentaSerializer(serializers.Serializer):
+    producto_id = serializers.IntegerField()
+    cantidad = serializers.IntegerField(min_value=1, max_value=999)
+
+
+class VentaLocalSerializer(serializers.Serializer):
+    """Venta en el local: un cliente (existente o nuevo) + lo que compró."""
+    cliente_id = serializers.IntegerField(required=False)
+    cliente = serializers.DictField(required=False)      # datos de un cliente nuevo (ClienteSerializer)
+    items = LineaVentaSerializer(many=True, allow_empty=False, error_messages={
+        'empty': 'Agrega al menos un producto.', 'not_a_list': 'Agrega al menos un producto.'})
+    metodo_pago = serializers.ChoiceField(choices=Pedido.METODOS_PAGO, error_messages={
+        'invalid_choice': 'Selecciona un método de pago.', 'required': 'Selecciona un método de pago.'})
+    notas = serializers.CharField(required=False, allow_blank=True, default='', max_length=500)
+
+    def validate(self, attrs):
+        if not attrs.get('cliente_id') and not attrs.get('cliente'):
+            raise serializers.ValidationError({'cliente': 'Indica quién hizo la compra.'})
+        return attrs
+
+
 class CheckoutSerializer(serializers.Serializer):
     """Datos que pide el checkout: envío (HU-VE-019) y pago (HU-VE-020)."""
     nombre_destinatario = serializers.CharField(max_length=120)
@@ -603,7 +624,7 @@ class CheckoutSerializer(serializers.Serializer):
     ciudad = serializers.CharField(max_length=80)
     departamento = serializers.CharField(max_length=80)
     metodo_pago = serializers.ChoiceField(
-        choices=Pedido.METODOS_PAGO,
+        choices=[m for m in Pedido.METODOS_PAGO if m[0] != 'efectivo'],   # efectivo solo en el local
         error_messages={'invalid_choice': 'Selecciona un método de pago válido.',
                         'required': 'Selecciona un método de pago.'},
     )

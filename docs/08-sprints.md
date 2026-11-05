@@ -137,11 +137,11 @@ de la plantilla + columnas de implementación y evidencia, y hoja *Resumen y tar
 
 **Tareas técnicas del sprint:**
 
-- 42 pruebas automáticas (python manage.py test account)
+- 45 pruebas automáticas (python manage.py test account)
 - Documentación completa en docs/ y esquema SQL
 - Guía de despliegue y de estudio para la sustentación
 
-**Cómo demostrarlo:** Inventario (alertas), Reportes (ingresos por mes, más vendidos, sin ventas), ficha técnica en el detalle; ejecutar `python manage.py test account` (42 pruebas OK).
+**Cómo demostrarlo:** Inventario (alertas), Reportes (ingresos por mes, más vendidos, sin ventas), ficha técnica en el detalle; ejecutar `python manage.py test account` (45 pruebas OK).
 
 ---
 

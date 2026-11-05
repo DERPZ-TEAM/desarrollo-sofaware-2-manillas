@@ -40,6 +40,7 @@ urlpatterns = [
 
     # --- Administrador ---
     path('admin/dashboard/', admin.dashboard_view),
+    path('admin/ventas-local/', admin.venta_local_view),
     path('admin/papelera/', admin.papelera_view),
     path('admin/papelera/<str:tipo>/<int:objeto_id>/', admin.papelera_accion_view),
     path('admin/inventario/', admin.inventario_view),

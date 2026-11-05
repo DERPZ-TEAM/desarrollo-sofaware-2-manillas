@@ -8,6 +8,7 @@ const PASOS = ['pendiente', 'confirmado', 'enviado', 'entregado']
 
 // Qué debe hacer el cliente según el método de pago elegido
 const INSTRUCCIONES_PAGO = {
+  efectivo: 'Pagado en efectivo en el local.',
   contraentrega: 'Pagas en efectivo cuando recibas tu pedido.',
   transferencia: 'Un asesor te contactará al teléfono registrado con los datos de la cuenta. Tu pedido se confirma cuando recibamos el pago.',
   nequi: 'Un asesor te contactará al teléfono registrado con el número Nequi / Daviplata. Tu pedido se confirma cuando recibamos el pago.',

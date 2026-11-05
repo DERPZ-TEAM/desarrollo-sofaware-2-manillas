@@ -10,13 +10,14 @@ from rest_framework.response import Response
 
 from .. import services
 from ..exceptions import ErrorDeNegocio
-from ..models import Pedido, Perfil
+from ..models import Cliente, Pedido
 from ..permissions import EsCliente
 from ..serializers import (
     AgregarAlCarritoSerializer,
     CarritoSerializer,
     CheckoutSerializer,
     PedidoSerializer,
+    limpiar_documento,
 )
 
 
@@ -79,11 +80,14 @@ def checkout_view(request):
     serializer.is_valid(raise_exception=True)
     datos = dict(serializer.validated_data)
     guardar = datos.pop('guardar_direccion', True)
+    tipo = datos.pop('tipo_documento', 'CC')
+    numero = (datos.pop('numero_documento', '') or '').strip()
+    documento = {'tipo_documento': tipo, 'numero_documento': limpiar_documento(tipo, numero)} if numero else None
 
-    pedido = services.crear_pedido_desde_carrito(request.user, datos)
+    pedido = services.crear_pedido_desde_carrito(request.user, datos, documento)
 
-    if guardar:   # recordamos la dirección para la próxima compra
-        Perfil.objects.filter(usuario=request.user).update(
+    if guardar:   # recordamos la dirección en el CLIENTE para la próxima compra
+        Cliente.objects.filter(pk=pedido.cliente_id).update(
             direccion=datos['direccion_envio'], ciudad=datos['ciudad'], departamento=datos['departamento'],
         )
     respuesta = PedidoSerializer(pedido).data
@@ -92,7 +96,9 @@ def checkout_view(request):
 
 
 def _mis_pedidos(request):
-    return Pedido.objects.filter(usuario=request.user).select_related('usuario').prefetch_related('items')
+    # Los pedidos del CLIENTE de esta cuenta
+    return (Pedido.objects.filter(cliente__usuario=request.user)
+            .select_related('cliente__usuario', 'registrado_por').prefetch_related('items'))
 
 
 @api_view(['GET'])

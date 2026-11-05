@@ -57,7 +57,7 @@ export default function AdminOrders() {
                 <tr key={p.id}>
                   <td><b>#{p.id}</b></td>
                   <td>{fecha(p.creado, true)}</td>
-                  <td>{p.usuario_nombre}<br /><small className="muted">{p.usuario_email}</small></td>
+                  <td>{p.cliente_nombre}<br /><small className="muted">{p.cliente_documento || p.cliente_correo}</small></td>
                   <td>{p.metodo_pago_display}</td>
                   <td>{money(p.total)}</td>
                   <td><StatusBadge estado={p.estado}>{p.estado_display}</StatusBadge></td>
@@ -76,7 +76,9 @@ export default function AdminOrders() {
             <div className="receipt-grid">
               <div>
                 <h4>Cliente</h4>
-                <p>{sel.usuario_nombre} ({sel.usuario_username})<br />{sel.usuario_email}</p>
+                <p>{sel.cliente_nombre}<br />{sel.cliente_documento || 'Sin documento'}<br />{sel.cliente_correo}<br />
+                  <small className="muted">{sel.cliente_usuario ? `Cuenta web: ${sel.cliente_usuario}` : 'Sin cuenta web'}
+                    {sel.registrado_por_username ? ` · Registrado por: ${sel.registrado_por_username}` : ''}</small></p>
                 <h4>Envío</h4>
                 <p>{sel.nombre_destinatario || '—'}<br />{sel.direccion_envio}<br />{sel.ciudad} {sel.departamento}<br />Tel. {sel.telefono_contacto || '—'}</p>
               </div>

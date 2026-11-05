@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import AuthShell from '../../components/AuthShell'
 import { Alert, Field } from '../../components/ui'
 import { useAuth } from '../../context/AuthContext'
+import PasswordInput from '../../components/PasswordInput'
 
 /** Inicio de sesión de CLIENTES (HU-AU-002). Acepta usuario o correo. */
 export default function Login() {
@@ -46,7 +47,7 @@ export default function Login() {
           <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} autoComplete="username" autoFocus />
         </Field>
         <Field label="Contraseña">
-          <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} autoComplete="current-password" />
+          <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} autoComplete="current-password" />
         </Field>
         <div className="form-links"><Link to="/recuperar">¿Olvidaste tu contraseña?</Link></div>
         <button className="btn btn-dark btn-block" disabled={loading}>{loading ? 'Entrando…' : 'Iniciar sesión'}</button>

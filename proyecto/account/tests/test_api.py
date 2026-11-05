@@ -17,7 +17,7 @@ from django.test import override_settings
 from PIL import Image
 from rest_framework.test import APITestCase
 
-from account.models import Categoria, Pedido, Producto
+from account.models import Categoria, Cliente, Pedido, Producto
 from account.services import calcular_totales
 
 User = get_user_model()
@@ -63,10 +63,15 @@ class AutenticacionTests(BaseAPITest):
         r = self.client.post('/api/auth/registro/', {
             'username': 'nuevo_user', 'email': 'nuevo@gb.com', 'primer_nombre': 'ana',
             'apellidos': 'gómez', 'password': 'Segura2026x', 'password2': 'Segura2026x',
+            'tipo_documento': 'CC', 'numero_documento': '1.098.765.432',
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['user']['rol'], 'cliente')
         self.assertEqual(r.data['user']['first_name'], 'Ana')
+        # Usuario (cuenta) y cliente (persona) quedan separados pero enlazados
+        cliente = Cliente.objects.get(usuario__username='nuevo_user')
+        self.assertEqual(cliente.numero_documento, '1098765432')
+        self.assertEqual(r.data['user']['numero_documento'], '1098765432')
 
     def test_registro_con_campos_vacios_muestra_errores(self):
         r = self.client.post('/api/auth/registro/', {}, format='json')
@@ -191,6 +196,7 @@ class CompraTests(BaseAPITest):
         'nombre_destinatario': 'Laura Pérez', 'telefono_contacto': '3001234567',
         'direccion_envio': 'Calle 10 # 5-20', 'ciudad': 'Cali', 'departamento': 'Valle',
         'metodo_pago': 'contraentrega',
+        'tipo_documento': 'CC', 'numero_documento': '1012345678',   # Laura aún no tenía documento
     }
 
     def test_no_se_agrega_producto_agotado(self):
@@ -318,3 +324,109 @@ class PruebaCompletaTests(BaseAPITest):
         self.login('admin', 'AdminGold123', admin=True)
         r = self.client.patch(f'/api/admin/pedidos/{pedido}/', {'estado': 'enviado'}, format='json')
         self.assertIn('No se puede pasar', r.data['detail'])
+
+
+class ClientesYPapeleraTests(BaseAPITest):
+    """Usuario y cliente separados + borrado lógico (papelera)."""
+
+    def registro(self, **extra):
+        datos = {'username': 'nueva', 'email': 'nueva@gb.com', 'primer_nombre': 'Sofia', 'apellidos': 'Lopez',
+                 'password': 'Segura2026x', 'password2': 'Segura2026x', 'tipo_documento': 'CC',
+                 'numero_documento': '1111111111'}
+        datos.update(extra)
+        return self.client.post('/api/auth/registro/', datos, format='json')
+
+    def test_admin_no_es_cliente(self):
+        self.assertFalse(Cliente.objects.filter(usuario=self.admin).exists())
+
+    def test_admin_registra_cliente_sin_cuenta_y_luego_se_enlaza(self):
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.client.post('/api/admin/clientes/', {
+            'tipo_documento': 'CC', 'numero_documento': '1111111111', 'nombres': 'sofia', 'apellidos': 'lopez',
+            'telefono': '3109998877',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertFalse(r.data['tiene_cuenta'])
+        presencial = Cliente.objects.get(numero_documento='1111111111')
+        self.client.credentials()
+        r = self.registro()
+        self.assertEqual(r.status_code, 201, r.data)
+        presencial.refresh_from_db()
+        self.assertEqual(presencial.usuario.username, 'nueva')        # mismo cliente, no uno duplicado
+        self.assertEqual(presencial.telefono, '3109998877')
+        self.assertEqual(Cliente.objects.filter(numero_documento='1111111111').count(), 1)
+
+    def test_documento_repetido_con_cuenta(self):
+        self.assertEqual(self.registro().status_code, 201)
+        r = self.registro(username='otra', email='otra@gb.com')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('numero_documento', r.data['errors'])
+
+    def test_documento_con_formato_invalido(self):
+        r = self.registro(numero_documento='12ab')
+        self.assertEqual(r.status_code, 400)
+
+    def test_pedido_queda_a_nombre_del_cliente(self):
+        self.login('laura', 'Cliente123')
+        self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
+        r = self.client.post('/api/checkout/', CompraTests.ENVIO, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        pedido = Pedido.objects.get(pk=r.data['id'])
+        self.assertEqual(pedido.cliente.usuario, self.cliente)
+        self.assertEqual(pedido.registrado_por, self.cliente)
+        self.assertEqual(r.data['cliente_documento'], 'CC 1012345678')
+
+    def test_checkout_pide_documento_si_falta(self):
+        self.login('laura', 'Cliente123')
+        self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
+        envio = {k: v for k, v in CompraTests.ENVIO.items() if 'documento' not in k}
+        r = self.client.post('/api/checkout/', envio, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('documento', r.data['detail'])
+
+    def test_producto_a_la_papelera_restaurar_y_definitivo(self):
+        self.login('laura', 'Cliente123')
+        self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.client.delete(f'/api/productos/{self.prod.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(Producto.todos.filter(pk=self.prod.id).exists())      # la fila sigue (lógico)
+        self.assertEqual(self.client.get(f'/api/productos/{self.prod.id}/').status_code, 404)
+        self.assertEqual(len(self.client.get('/api/admin/papelera/').data['productos']), 1)
+        self.assertEqual(self.prod.items_carrito.count(), 0)                   # salió de los carritos
+        r = self.client.post(f'/api/admin/papelera/productos/{self.prod.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.client.get(f'/api/productos/{self.prod.id}/').status_code, 200)
+        self.client.delete(f'/api/productos/{self.prod.id}/')
+        r = self.client.delete(f'/api/admin/papelera/productos/{self.prod.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(Producto.todos.filter(pk=self.prod.id).exists())     # ahora sí, físico
+
+    def test_categoria_en_papelera_oculta_sus_productos(self):
+        self.login('admin', 'AdminGold123', admin=True)
+        self.client.delete(f'/api/categorias/{self.cat.id}/')
+        self.client.credentials()
+        self.assertEqual(len(self.client.get('/api/productos/').data), 0)
+        self.assertTrue(Producto.objects.filter(pk=self.prod.id).exists())    # el producto sigue
+        self.login('admin', 'AdminGold123', admin=True)
+        r = self.client.post('/api/categorias/', {'nombre': 'pulseras'}, format='json')
+        self.assertEqual(r.status_code, 400)                                   # el nombre está en la papelera
+        self.client.post(f'/api/admin/papelera/categorias/{self.cat.id}/')
+        self.client.credentials()
+        self.assertEqual(len(self.client.get('/api/productos/').data), 1)
+
+    def test_cliente_con_pedidos_no_se_borra_definitivamente(self):
+        self.login('laura', 'Cliente123')
+        self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
+        self.client.post('/api/checkout/', CompraTests.ENVIO, format='json')
+        cliente = Cliente.objects.get(usuario=self.cliente)
+        self.login('admin', 'AdminGold123', admin=True)
+        self.assertEqual(self.client.delete(f'/api/admin/clientes/{cliente.id}/').status_code, 200)
+        self.cliente.refresh_from_db()
+        self.assertFalse(self.cliente.is_active)                               # ya no puede entrar
+        r = self.client.delete(f'/api/admin/papelera/clientes/{cliente.id}/')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('pedido', r.data['detail'])
+        self.client.post(f'/api/admin/papelera/clientes/{cliente.id}/')
+        self.cliente.refresh_from_db()
+        self.assertTrue(self.cliente.is_active)

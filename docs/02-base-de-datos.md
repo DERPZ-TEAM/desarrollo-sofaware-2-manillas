@@ -20,6 +20,11 @@ Migraciones del proyecto:
 | `0006_campos_ficha_envio_reportes` | **Nueva (sprints 2-5):** ficha técnica (tipo de oro, quilates, peso, talla, elaboración), stock mínimo, datos de envío y pago, guía, descuento, dirección del perfil, índices y CHECK. Incluye un paso de datos que copia `total → subtotal` en pedidos antiguos |
 | `0007_reiniciar_contadores_id` | Pone los contadores automáticos de `id` en el valor más alto existente (los datos importados con JSON los habían dejado atrás y no se podían crear carritos ni pedidos) |
 | `0008_catalogo_demo` | Carga 29 piezas de demostración en 7 categorías con su imagen (`account/datos_demo/catalogo/`). Solo corre una vez y no toca productos existentes |
+| `0009_cliente_y_papelera` | Crea la tabla **`cliente`**, agrega `eliminado_en` (Papelera) a producto y categoría, agrega `pedido.cliente_id` (aún opcional) y renombra `pedido.usuario_id` → `registrado_por_id` |
+| `0010_datos_clientes` | **Paso de datos:** por cada usuario cliente (o que tenga pedidos) crea su fila en `cliente` copiando nombre, correo, teléfono y dirección del perfil, y enlaza sus pedidos. Los administradores no se vuelven clientes |
+| `0011_cliente_obligatorio` | `pedido.cliente_id` pasa a obligatorio (`PROTECT`) y se quitan del perfil los datos personales que ya se copiaron a `cliente` |
+
+> ¿Por qué tres migraciones y no una? PostgreSQL no deja cambiar la estructura de una tabla en la misma transacción en la que se acaban de modificar sus filas ("pending trigger events"). Por eso se separa: **crear columnas → copiar datos → volver obligatoria la columna**.
 
 > ✅ La migración 0006 **solo agrega** columnas con valores por defecto: no borra ni modifica datos existentes. Es segura sobre la base de producción.
 
@@ -28,8 +33,10 @@ Migraciones del proyecto:
 ```mermaid
 erDiagram
     auth_user ||--|| account_perfil : "tiene (1:1)"
+    auth_user |o--o| cliente : "puede ser (1:0..1)"
     auth_user ||--o| carrito : "tiene (1:1)"
-    auth_user ||--o{ pedido : "realiza (1:N)"
+    cliente ||--o{ pedido : "compra (1:N)"
+    auth_user |o--o{ pedido : "registra (1:N)"
     account_categoria ||--o{ producto : "agrupa (1:N)"
     carrito ||--o{ item_carrito : "contiene (1:N)"
     producto ||--o{ item_carrito : "aparece en"
@@ -47,15 +54,26 @@ erDiagram
         bigint id PK
         int usuario_id FK,UK
         varchar rol "cliente | admin"
+    }
+    cliente {
+        bigint id PK
+        int usuario_id FK,UK "nullable"
+        varchar tipo_documento "CC|CE|TI|PAS"
+        varchar numero_documento "UK con tipo"
+        varchar nombres
+        varchar apellidos
+        varchar correo
         varchar telefono
         varchar direccion
         varchar ciudad
+        timestamptz eliminado_en "Papelera"
     }
     account_categoria {
         bigint id PK
         varchar nombre UK
         varchar slug UK
         bool activa
+        timestamptz eliminado_en "Papelera"
     }
     producto {
         bigint id PK
@@ -71,6 +89,7 @@ erDiagram
         numeric peso_gramos
         numeric talla_cm
         varchar elaboracion
+        timestamptz eliminado_en "Papelera"
     }
     carrito {
         bigint id PK
@@ -84,7 +103,8 @@ erDiagram
     }
     pedido {
         bigint id PK
-        int usuario_id FK
+        bigint cliente_id FK
+        int registrado_por_id FK "nullable"
         numeric subtotal
         numeric descuento
         numeric total
@@ -117,26 +137,51 @@ erDiagram
 | carrito → usuario | `CASCADE` | Igual que arriba |
 | item_carrito → producto | `CASCADE` | Si se borra un producto, desaparece de los carritos |
 | producto → categoría | `SET NULL` | Si se borra la categoría, el producto **no se pierde**, queda "sin categoría" |
-| pedido → usuario | `PROTECT` | **No se puede borrar** un cliente que tiene compras: las ventas son registros contables |
+| cliente → usuario | `SET NULL` | Si se borra la cuenta web, la persona (cliente) y sus compras se conservan |
+| pedido → cliente | `PROTECT` | **No se puede borrar** un cliente que tiene compras: las ventas son registros contables |
+| pedido → registrado_por (usuario) | `SET NULL` | Si se borra la cuenta que registró la venta, la venta sigue |
 | item_pedido → pedido | `CASCADE` | El detalle pertenece al pedido |
 | item_pedido → producto | `SET NULL` | Si se borra un producto, el historial de ventas se conserva (por eso guardamos `nombre` y `precio` copiados) |
 
 **Restricciones adicionales:**
 - `UNIQUE (carrito_id, producto_id)`: un producto aparece una sola vez por carrito (si lo agregas de nuevo, se suma la cantidad).
 - `UNIQUE` en `usuario_id` de perfil y carrito → relación **uno a uno**.
+- `UNIQUE` en `cliente.usuario_id` (que además admite NULL) → relación **uno a cero-o-uno**.
+- `UNIQUE (tipo_documento, numero_documento)` **parcial** (`WHERE numero_documento <> ''`): no se repite un documento, pero se permiten varios clientes antiguos que aún no lo han dado.
 - `CHECK (stock >= 0)`: PostgreSQL rechaza stock negativo aunque el código fallara.
 - `CHECK (total >= 0)` en pedido.
 - **Índices** en `precio`, `estado`, `creado`, `(activo, categoria_id)` para que filtros y reportes sean rápidos.
 
-## 4. Usuarios y el campo `rol`
+## 4. Usuario ≠ Cliente, y el campo `rol`
 
-Django ya trae la tabla `auth_user` (usuario, correo, contraseña con hash). En lugar de reemplazarla, la **extendemos** con `account_perfil` (relación 1:1) que tiene el campo **`rol`** (`cliente` o `admin`), teléfono y dirección.
+| | **Usuario** (`auth_user` + `account_perfil`) | **Cliente** (`cliente`) |
+|---|---|---|
+| ¿Qué es? | Una **cuenta** para entrar al sistema (usuario + contraseña) | Una **persona** que compra |
+| Ejemplos | El administrador, un cliente que se registró en la web | Un cliente de la web **o** alguien que compró en el local sin cuenta |
+| Datos | username, correo, contraseña (hash), `rol` | documento, nombres, teléfono, dirección |
+
+- Un administrador es usuario pero **no** es cliente.
+- Una persona que compra en el local es cliente pero **no** tiene usuario (`usuario_id = NULL`).
+- Si esa persona luego se registra en la web con el **mismo documento**, se le enlaza su cliente existente (no se duplica).
+- El pedido guarda las dos cosas: `cliente_id` (quién compra) y `registrado_por_id` (qué cuenta lo registró).
+
+`account_perfil` (1:1 con `auth_user`) guarda solo el **`rol`** de la cuenta (`cliente` o `admin`).
 
 Para que el rol y el permiso del panel de Django siempre coincidan, `account/signals.py` sincroniza automáticamente: si `is_staff = True` → `rol = 'admin'`; si no → `'cliente'`.
 
 > **Las contraseñas nunca se guardan en texto plano.** Django guarda algo como `pbkdf2_sha256$870000$sal$hash...`. Ni siquiera el administrador puede ver la contraseña original.
 
 El esquema SQL completo y comentado está en [`esquema.sql`](esquema.sql).
+
+## 4.1 Borrado lógico y Papelera
+
+Cuando el administrador pulsa **Eliminar** en Productos, Categorías o Clientes, la fila **no se borra**: se llena la columna `eliminado_en` con la fecha y hora (**borrado lógico**). Así:
+
+- Deja de verse en la tienda y en las listas del panel (el *manager* `objects` de Django filtra `eliminado_en IS NULL`; `todos` ve también lo eliminado).
+- Aparece en **Admin → Papelera**, donde se puede **Restaurar** (vuelve `eliminado_en = NULL`) o **Eliminar definitivamente** (`DELETE` real = **borrado físico**).
+- Un producto en la papelera se quita de los carritos; un cliente en la papelera deja su cuenta web desactivada (`is_active = false`) hasta restaurarlo.
+- **No se puede eliminar definitivamente** un cliente con pedidos (son registros contables: `PROTECT`). Un producto sí: el historial de ventas se conserva porque `item_pedido` guarda nombre y precio copiados.
+- No se pueden crear dos categorías con el mismo nombre aunque una esté en la papelera: el sistema pide restaurarla.
 
 ## 5. Conectar pgAdmin a la base de producción SIN perder datos
 

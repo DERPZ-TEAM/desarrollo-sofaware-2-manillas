@@ -13,9 +13,10 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework import serializers
 
-from .models import Carrito, Categoria, ItemCarrito, ItemPedido, Pedido, Perfil, Producto
+from .models import Carrito, Categoria, Cliente, ItemCarrito, ItemPedido, Pedido, Perfil, Producto
 from .permissions import es_admin
 from .services import calcular_totales
 
@@ -41,6 +42,24 @@ def limpiar_telefono(valor):
     return valor
 
 
+# Formato permitido según el tipo de documento
+FORMATOS_DOCUMENTO = {
+    'CC': (re.compile(r'^\d{6,10}$'), 'La cédula debe tener entre 6 y 10 números.'),
+    'TI': (re.compile(r'^\d{6,11}$'), 'La tarjeta de identidad debe tener entre 6 y 11 números.'),
+    'CE': (re.compile(r'^[A-Za-z0-9]{4,12}$'), 'La cédula de extranjería debe tener entre 4 y 12 letras o números.'),
+    'PAS': (re.compile(r'^[A-Za-z0-9]{5,15}$'), 'El pasaporte debe tener entre 5 y 15 letras o números.'),
+}
+
+
+def limpiar_documento(tipo, numero):
+    """Quita puntos y espacios ("1.234.567" -> "1234567") y valida el formato."""
+    numero = re.sub(r'[\s.\-]', '', numero or '').upper()
+    patron, mensaje = FORMATOS_DOCUMENTO[tipo]
+    if not patron.match(numero):
+        raise serializers.ValidationError({'numero_documento': mensaje})
+    return numero
+
+
 def url_publica_imagen(imagen, request=None):
     """Devuelve la URL completa de la imagen de un producto.
 
@@ -62,31 +81,110 @@ def url_publica_imagen(imagen, request=None):
 # ===========================================================================
 # USUARIOS Y AUTENTICACIÓN
 # ===========================================================================
+def cliente_de(user):
+    """El Cliente asociado a una cuenta, o None (por ejemplo, un administrador)."""
+    try:
+        return user.cliente
+    except Cliente.DoesNotExist:
+        return None
+
+
 class UsuarioSerializer(serializers.ModelSerializer):
+    """La CUENTA (usuario) y, si la tiene, los datos de su CLIENTE."""
+    CAMPOS_CLIENTE = ('telefono', 'direccion', 'ciudad', 'departamento', 'tipo_documento', 'numero_documento')
+
     rol = serializers.SerializerMethodField()
-    telefono = serializers.CharField(source='perfil.telefono', default='', read_only=True)
-    direccion = serializers.CharField(source='perfil.direccion', default='', read_only=True)
-    ciudad = serializers.CharField(source='perfil.ciudad', default='', read_only=True)
-    departamento = serializers.CharField(source='perfil.departamento', default='', read_only=True)
+    cliente_id = serializers.SerializerMethodField()
+    telefono = serializers.SerializerMethodField()
+    direccion = serializers.SerializerMethodField()
+    ciudad = serializers.SerializerMethodField()
+    departamento = serializers.SerializerMethodField()
+    tipo_documento = serializers.SerializerMethodField()
+    numero_documento = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = (
-            'id', 'username', 'email', 'first_name', 'last_name', 'is_staff', 'rol',
-            'telefono', 'direccion', 'ciudad', 'departamento', 'date_joined', 'last_login',
+            'id', 'username', 'email', 'first_name', 'last_name', 'is_staff', 'rol', 'cliente_id',
+            'tipo_documento', 'numero_documento', 'telefono', 'direccion', 'ciudad', 'departamento',
+            'date_joined', 'last_login',
         )
 
     def get_rol(self, obj):
         return Perfil.ROL_ADMIN if es_admin(obj) else Perfil.ROL_CLIENTE
 
+    def get_cliente_id(self, obj):
+        cliente = cliente_de(obj)
+        return cliente.id if cliente else None
 
-class ClienteAdminSerializer(UsuarioSerializer):
-    """Lo que ve el administrador de cada cliente (HU-US-005)."""
-    total_pedidos = serializers.IntegerField(read_only=True)
-    total_comprado = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    def _dato(self, obj, campo):
+        cliente = cliente_de(obj)
+        return getattr(cliente, campo) if cliente else ''
 
-    class Meta(UsuarioSerializer.Meta):
-        fields = UsuarioSerializer.Meta.fields + ('is_active', 'total_pedidos', 'total_comprado')
+    def get_telefono(self, obj):
+        return self._dato(obj, 'telefono')
+
+    def get_direccion(self, obj):
+        return self._dato(obj, 'direccion')
+
+    def get_ciudad(self, obj):
+        return self._dato(obj, 'ciudad')
+
+    def get_departamento(self, obj):
+        return self._dato(obj, 'departamento')
+
+    def get_tipo_documento(self, obj):
+        return self._dato(obj, 'tipo_documento') or 'CC'
+
+    def get_numero_documento(self, obj):
+        return self._dato(obj, 'numero_documento')
+
+
+class ClienteSerializer(serializers.ModelSerializer):
+    """El CLIENTE, como lo ve y edita el administrador (HU-US-005).
+
+    Sirve también para registrar clientes que compran en el local, sin cuenta.
+    """
+    tiene_cuenta = serializers.SerializerMethodField()
+    usuario_username = serializers.CharField(source='usuario.username', read_only=True, default=None)
+    tipo_documento_display = serializers.CharField(source='get_tipo_documento_display', read_only=True)
+    total_pedidos = serializers.IntegerField(read_only=True, default=0)
+    total_comprado = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True, default=0)
+    numero_documento = serializers.CharField(max_length=20, error_messages={
+        'required': 'Escribe el número de documento.', 'blank': 'Escribe el número de documento.'})
+
+    class Meta:
+        model = Cliente
+        fields = (
+            'id', 'tipo_documento', 'tipo_documento_display', 'numero_documento', 'nombres', 'apellidos',
+            'correo', 'telefono', 'direccion', 'ciudad', 'departamento', 'tiene_cuenta', 'usuario_username',
+            'total_pedidos', 'total_comprado', 'eliminado_en', 'creado',
+        )
+        read_only_fields = ('id', 'eliminado_en', 'creado')
+
+    def get_tiene_cuenta(self, obj):
+        return obj.usuario_id is not None
+
+    def validate_nombres(self, value):
+        return limpiar_nombre(value, 'los nombres')
+
+    def validate_apellidos(self, value):
+        return limpiar_nombre(value, 'los apellidos') if value.strip() else ''
+
+    def validate_telefono(self, value):
+        return limpiar_telefono(value)
+
+    def validate(self, attrs):
+        tipo = attrs.get('tipo_documento', getattr(self.instance, 'tipo_documento', 'CC'))
+        if 'numero_documento' in attrs or 'tipo_documento' in attrs:
+            numero = limpiar_documento(tipo, attrs.get('numero_documento', getattr(self.instance, 'numero_documento', '')))
+            otros = Cliente.todos.filter(tipo_documento=tipo, numero_documento=numero)
+            if self.instance:
+                otros = otros.exclude(pk=self.instance.pk)
+            if otros.exists():
+                raise serializers.ValidationError({'numero_documento': 'Ya existe un cliente con ese documento.'})
+            attrs['numero_documento'] = numero
+        return attrs
 
 
 class RegistroSerializer(serializers.Serializer):
@@ -97,6 +195,9 @@ class RegistroSerializer(serializers.Serializer):
     password2 = serializers.CharField(write_only=True)
     primer_nombre = serializers.CharField(max_length=40)
     apellidos = serializers.CharField(max_length=80)
+    tipo_documento = serializers.ChoiceField(choices=Cliente.TIPOS_DOCUMENTO, default='CC')
+    numero_documento = serializers.CharField(max_length=20, error_messages={
+        'required': 'Escribe tu número de documento.', 'blank': 'Escribe tu número de documento.'})
     telefono = serializers.CharField(required=False, allow_blank=True, default='')
 
     def validate_username(self, value):
@@ -125,6 +226,14 @@ class RegistroSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({'password2': 'Las contraseñas no coinciden.'})
+        attrs['numero_documento'] = limpiar_documento(attrs['tipo_documento'], attrs['numero_documento'])
+        existente = Cliente.todos.filter(
+            tipo_documento=attrs['tipo_documento'], numero_documento=attrs['numero_documento'],
+        ).first()
+        if existente and existente.usuario_id:
+            raise serializers.ValidationError({'numero_documento': 'Ya existe una cuenta con ese documento.'})
+        # Si ya compró en el local (cliente sin cuenta), le enlazamos la cuenta nueva
+        attrs['cliente_existente'] = existente
         usuario_temporal = User(
             username=attrs['username'], email=attrs['email'],
             first_name=attrs['primer_nombre'], last_name=attrs['apellidos'],
@@ -135,7 +244,9 @@ class RegistroSerializer(serializers.Serializer):
             raise serializers.ValidationError({'password': list(exc.messages)})
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
+        """Crea en UNA transacción: el usuario (cuenta), su perfil y su cliente."""
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
@@ -144,7 +255,17 @@ class RegistroSerializer(serializers.Serializer):
             last_name=validated_data['apellidos'],
         )
         # La señal post_save ya creó el Perfil con rol 'cliente'
-        Perfil.objects.filter(usuario=user).update(telefono=validated_data.get('telefono', ''))
+        cliente = validated_data.get('cliente_existente') or Cliente(
+            tipo_documento=validated_data['tipo_documento'],
+            numero_documento=validated_data['numero_documento'],
+        )
+        cliente.usuario = user
+        cliente.nombres = validated_data['primer_nombre']
+        cliente.apellidos = validated_data['apellidos']
+        cliente.correo = validated_data['email']
+        cliente.telefono = validated_data.get('telefono', '') or cliente.telefono
+        cliente.eliminado_en = None
+        cliente.save()
         user.refresh_from_db()
         return user
 
@@ -166,6 +287,8 @@ class ActualizarPerfilSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=40)
     last_name = serializers.CharField(max_length=80)
     email = serializers.EmailField()
+    tipo_documento = serializers.ChoiceField(choices=Cliente.TIPOS_DOCUMENTO, required=False)
+    numero_documento = serializers.CharField(required=False, allow_blank=True, max_length=20)
     telefono = serializers.CharField(required=False, allow_blank=True, default='')
     direccion = serializers.CharField(required=False, allow_blank=True, default='', max_length=200)
     ciudad = serializers.CharField(required=False, allow_blank=True, default='', max_length=80)
@@ -187,6 +310,21 @@ class ActualizarPerfilSerializer(serializers.Serializer):
     def validate_telefono(self, value):
         return limpiar_telefono(value)
 
+    def validate(self, attrs):
+        numero = (attrs.get('numero_documento') or '').strip()
+        if numero:
+            tipo = attrs.get('tipo_documento', 'CC')
+            numero = limpiar_documento(tipo, numero)
+            propio = cliente_de(self.context['request'].user)
+            otros = Cliente.todos.filter(tipo_documento=tipo, numero_documento=numero)
+            if propio:
+                otros = otros.exclude(pk=propio.pk)
+            if otros.exists():
+                raise serializers.ValidationError({'numero_documento': 'Ese documento ya está registrado.'})
+            attrs['numero_documento'] = numero
+        return attrs
+
+    @transaction.atomic
     def save(self, **kwargs):
         user = self.context['request'].user
         datos = self.validated_data
@@ -194,10 +332,16 @@ class ActualizarPerfilSerializer(serializers.Serializer):
         user.last_name = datos['last_name']
         user.email = datos['email']
         user.save(update_fields=['first_name', 'last_name', 'email'])
-        Perfil.objects.update_or_create(
-            usuario=user,
-            defaults={k: datos.get(k, '').strip() for k in ('telefono', 'direccion', 'ciudad', 'departamento')},
-        )
+        cliente = cliente_de(user) or Cliente(usuario=user)
+        cliente.nombres = datos['first_name']
+        cliente.apellidos = datos['last_name']
+        cliente.correo = datos['email']
+        for campo in ('telefono', 'direccion', 'ciudad', 'departamento'):
+            setattr(cliente, campo, datos.get(campo, '').strip())
+        if datos.get('numero_documento'):
+            cliente.tipo_documento = datos.get('tipo_documento', cliente.tipo_documento)
+            cliente.numero_documento = datos['numero_documento']
+        cliente.save()
         user.refresh_from_db()
         return user
 
@@ -248,18 +392,21 @@ class CategoriaSerializer(serializers.ModelSerializer):
         model = Categoria
         fields = (
             'id', 'nombre', 'slug', 'descripcion', 'activa',
-            'orden', 'total_productos', 'creado', 'actualizado',
+            'orden', 'total_productos', 'eliminado_en', 'creado', 'actualizado',
         )
-        read_only_fields = ('id', 'slug', 'creado', 'actualizado', 'total_productos')
+        read_only_fields = ('id', 'slug', 'eliminado_en', 'creado', 'actualizado', 'total_productos')
 
     def validate_nombre(self, value):
         value = ' '.join(value.split())
         if len(value) < 2:
             raise serializers.ValidationError('El nombre de la categoría es muy corto.')
-        qs = Categoria.objects.filter(nombre__iexact=value)
+        qs = Categoria.todos.filter(nombre__iexact=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
+        existente = qs.first()
+        if existente and existente.eliminado_en:
+            raise serializers.ValidationError('Hay una categoría con ese nombre en la Papelera: restáurala.')
+        if existente:
             raise serializers.ValidationError('Ya existe una categoría con ese nombre.')
         return value
 
@@ -279,7 +426,7 @@ class ProductoListSerializer(serializers.ModelSerializer):
             'id', 'nombre', 'slug', 'descripcion', 'precio', 'stock', 'stock_minimo',
             'estado_stock', 'imagen_url', 'activo', 'categoria', 'categoria_nombre',
             'tipo_oro', 'tipo_oro_display', 'quilates', 'peso_gramos', 'talla_cm',
-            'elaboracion', 'elaboracion_display', 'creado', 'actualizado', 'total_vendido',
+            'elaboracion', 'elaboracion_display', 'eliminado_en', 'creado', 'actualizado', 'total_vendido',
         )
 
     def get_imagen_url(self, obj):
@@ -458,6 +605,9 @@ class CheckoutSerializer(serializers.Serializer):
     )
     notas = serializers.CharField(required=False, allow_blank=True, default='', max_length=500)
     guardar_direccion = serializers.BooleanField(required=False, default=True)
+    # Solo se piden si el cliente todavía no tiene documento (clientes antiguos)
+    tipo_documento = serializers.ChoiceField(choices=Cliente.TIPOS_DOCUMENTO, required=False)
+    numero_documento = serializers.CharField(required=False, allow_blank=True, max_length=20)
 
     def validate_nombre_destinatario(self, value):
         return limpiar_nombre(value, 'el nombre de quien recibe')
@@ -479,9 +629,11 @@ class ItemPedidoSerializer(serializers.ModelSerializer):
 
 class PedidoSerializer(serializers.ModelSerializer):
     items = ItemPedidoSerializer(many=True, read_only=True)
-    usuario_username = serializers.CharField(source='usuario.username', read_only=True)
-    usuario_email = serializers.EmailField(source='usuario.email', read_only=True)
-    usuario_nombre = serializers.SerializerMethodField()
+    cliente_nombre = serializers.CharField(source='cliente.nombre_completo', read_only=True)
+    cliente_documento = serializers.SerializerMethodField()
+    cliente_correo = serializers.CharField(source='cliente.correo', read_only=True)
+    cliente_usuario = serializers.CharField(source='cliente.usuario.username', read_only=True, default=None)
+    registrado_por_username = serializers.CharField(source='registrado_por.username', read_only=True, default=None)
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
     metodo_pago_display = serializers.CharField(source='get_metodo_pago_display', read_only=True)
     estados_siguientes = serializers.SerializerMethodField()
@@ -489,7 +641,8 @@ class PedidoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Pedido
         fields = (
-            'id', 'usuario', 'usuario_username', 'usuario_email', 'usuario_nombre',
+            'id', 'cliente', 'cliente_nombre', 'cliente_documento', 'cliente_correo', 'cliente_usuario',
+            'registrado_por_username',
             'subtotal', 'descuento', 'total', 'estado', 'estado_display', 'estados_siguientes',
             'metodo_pago', 'metodo_pago_display', 'nombre_destinatario', 'telefono_contacto',
             'direccion_envio', 'ciudad', 'departamento', 'transportadora', 'numero_guia',
@@ -497,8 +650,9 @@ class PedidoSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
-    def get_usuario_nombre(self, obj):
-        return obj.usuario.get_full_name() or obj.usuario.username
+    def get_cliente_documento(self, obj):
+        c = obj.cliente
+        return f'{c.tipo_documento} {c.numero_documento}' if c.numero_documento else ''
 
     def get_estados_siguientes(self, obj):
         return sorted(Pedido.TRANSICIONES.get(obj.estado, set()))

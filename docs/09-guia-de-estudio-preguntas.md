@@ -50,6 +50,15 @@ Archivo que describe un cambio de estructura. La `0006` solo **agrega** columnas
 **11. ¿Cómo se conectan a la base de producción con pgAdmin sin dañarla?**
 Session pooler de Supabase, SSL `require`, primero un backup, solo `SELECT` o transacciones con `BEGIN/ROLLBACK`, nunca cambiar estructura a mano. Ver doc 02 sección 5.
 
+**¿Usuario y cliente son lo mismo?**
+No. **Usuario** es una cuenta para entrar (usuario + contraseña + rol). **Cliente** es la persona que compra, identificada por su documento. Un admin es usuario pero no cliente; quien compra en el local es cliente sin usuario. Relación `usuario 1 : 0..1 cliente` (FK `cliente.usuario_id` opcional y única). El pedido apunta al **cliente** (`PROTECT`) y guarda qué cuenta lo registró (`registrado_por`).
+
+**¿Por qué el documento y no el nombre como llave?**
+Dos personas pueden llamarse igual. La PK sigue siendo `id` (número que nunca cambia); el documento es una llave **candidata** protegida con un índice único `(tipo_documento, numero_documento)`.
+
+**¿Los borrados son lógicos o físicos?**
+Los dos. *Eliminar* hace un borrado **lógico** (`eliminado_en = fecha`) y lo manda a la **Papelera**; desde ahí se puede *Restaurar* o *Eliminar definitivamente* (borrado **físico**, `DELETE`). Así un error se puede deshacer, pero lo que de verdad se quiere borrar no se queda oculto para siempre. Un cliente con compras no se puede borrar físicamente.
+
 ## C. Seguridad y autenticación
 
 **12. ¿Cómo funciona el login?**
@@ -130,6 +139,9 @@ Para que al recargar `/carrito` Vercel devuelva `index.html` y React muestre la 
 **35. ¿Por qué esos colores y tipografías?**
 Negro + dorado + marfil transmiten lujo (joyería); regla 60-30-10. Cormorant Garamond (serif clásica) para títulos, Outfit (moderna, legible) para textos. Ver doc 07.
 
+**¿Cómo funciona el "ojito" de las contraseñas?**
+El componente `PasswordInput.jsx` cambia el `type` del campo entre `password` y `text`. Funciona como sensor: con el **mouse**, se ve mientras el puntero está encima del ojito y se oculta al salir (`pointerenter` / `pointerleave`); en **pantalla táctil**, se ve mientras se mantiene el dedo y se oculta al soltar (`pointerdown` / `pointerup`); con **teclado**, mientras se mantiene Espacio o Enter. Está en todos los campos de contraseña.
+
 ## G. Despliegue
 
 **36. ¿Qué hace `build.sh`?**
@@ -147,7 +159,7 @@ El plan gratis de Render "duerme" el servicio tras 15 minutos sin uso; la primer
 ## H. Calidad
 
 **40. ¿Cómo saben que funciona?**
-30 pruebas automáticas (`python manage.py test account`) que cubren registro, login, permisos, CRUD con imagen, filtros, carrito, checkout con descuento, rollback por falta de stock, estados de pedido, cancelación con devolución de stock y reportes. Además pruebas manuales del flujo completo en el navegador.
+39 pruebas automáticas (`python manage.py test account`) que cubren registro, login, permisos, CRUD con imagen, filtros, carrito, checkout con descuento, rollback por falta de stock, estados de pedido, cancelación con devolución de stock y reportes. Además pruebas manuales del flujo completo en el navegador.
 
 ---
 

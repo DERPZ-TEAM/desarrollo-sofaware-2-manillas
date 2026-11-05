@@ -61,7 +61,7 @@ export default function Dashboard() {
                 {data.pedidos_recientes.map((p) => (
                   <tr key={p.id}>
                     <td>#{p.id}</td>
-                    <td>{p.usuario_nombre}<br /><small className="muted">{fecha(p.creado)}</small></td>
+                    <td>{p.cliente_nombre}<br /><small className="muted">{fecha(p.creado)}</small></td>
                     <td><StatusBadge estado={p.estado}>{p.estado_display}</StatusBadge></td>
                     <td className="right">{money(p.total)}</td>
                   </tr>

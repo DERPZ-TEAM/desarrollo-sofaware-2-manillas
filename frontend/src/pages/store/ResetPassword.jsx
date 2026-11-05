@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import AuthShell from '../../components/AuthShell'
 import { Alert, Field } from '../../components/ui'
+import PasswordInput from '../../components/PasswordInput'
 
 /** Recuperar contraseña, paso 2: el enlace del correo trae uid y token. */
 export default function ResetPassword() {
@@ -33,10 +34,10 @@ export default function ResetPassword() {
       ) : (
         <form onSubmit={onSubmit} noValidate>
           <Field label="Nueva contraseña" hint="Mínimo 8 caracteres, letras y números.">
-            <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} autoComplete="new-password" />
+            <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} autoComplete="new-password" />
           </Field>
           <Field label="Confirmar contraseña">
-            <input type="password" value={form.password2} onChange={(e) => setForm({ ...form, password2: e.target.value })} autoComplete="new-password" />
+            <PasswordInput value={form.password2} onChange={(e) => setForm({ ...form, password2: e.target.value })} autoComplete="new-password" />
           </Field>
           <button className="btn btn-dark btn-block">Guardar contraseña</button>
         </form>

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import { Alert, EmptyState, Field, Loader, Reintentar } from '../../components/ui'
 import { useAuth } from '../../context/AuthContext'
-import { money } from '../../utils/format'
+import { TIPOS_DOCUMENTO, errorDocumento, money } from '../../utils/format'
 
 const METODOS = [
   { value: 'contraentrega', label: 'Pago contra entrega', desc: 'Pagas en efectivo al recibir.' },
@@ -14,7 +14,8 @@ const METODOS = [
 
 /** Checkout: datos de envío + método de pago + confirmación (HU-VE-019, 020, 021). */
 export default function Checkout() {
-  const { user, setCartCount } = useAuth()
+  const { user, setCartCount, updateUser } = useAuth()
+  const faltaDocumento = !user.numero_documento
   const navigate = useNavigate()
   const [cart, setCart] = useState(null)
   const [form, setForm] = useState({
@@ -26,6 +27,8 @@ export default function Checkout() {
     metodo_pago: '',
     notas: '',
     guardar_direccion: true,
+    tipo_documento: user.tipo_documento || 'CC',
+    numero_documento: '',
   })
   const [errors, setErrors] = useState({})
   const [error, setError] = useState('')
@@ -43,6 +46,10 @@ export default function Checkout() {
     if (!form.ciudad.trim()) e.ciudad = 'Escribe la ciudad.'
     if (!form.departamento.trim()) e.departamento = 'Escribe el departamento.'
     if (!form.metodo_pago) e.metodo_pago = 'Selecciona un método de pago.'
+    if (faltaDocumento) {
+      const doc = errorDocumento(form.tipo_documento, form.numero_documento)
+      if (doc) e.numero_documento = doc
+    }
     return e
   }
 
@@ -56,6 +63,7 @@ export default function Checkout() {
     try {
       const pedido = await api('/checkout/', { method: 'POST', body: form })
       setCartCount(0)
+      if (faltaDocumento) api('/auth/me/').then(updateUser).catch(() => {})   // ya quedó guardado
       navigate(`/pedido/${pedido.id}`, { state: { nuevo: true } })
     } catch (err) {
       setErrors(err.fields || {})
@@ -82,6 +90,18 @@ export default function Checkout() {
           <Alert>{error}</Alert>
           <div className="panel">
             <h3>1. Datos de envío</h3>
+            {faltaDocumento && (
+              <div className="two">
+                <Field label="Tipo de documento">
+                  <select value={form.tipo_documento} onChange={(e) => set('tipo_documento', e.target.value)}>
+                    {TIPOS_DOCUMENTO.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Número de documento" error={errors.numero_documento} hint="Lo pedimos una sola vez, para el comprobante.">
+                  <input value={form.numero_documento} onChange={(e) => set('numero_documento', e.target.value)} />
+                </Field>
+              </div>
+            )}
             <div className="two">
               <Field label="Nombre de quien recibe" error={errors.nombre_destinatario}>
                 <input value={form.nombre_destinatario} onChange={(e) => set('nombre_destinatario', e.target.value)} />

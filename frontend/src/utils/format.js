@@ -14,6 +14,28 @@ export function fecha(valor, conHora = false) {
   })
 }
 
+// Tipos de documento (deben coincidir con Cliente.TIPOS_DOCUMENTO del backend)
+export const TIPOS_DOCUMENTO = [
+  { value: 'CC', label: 'Cédula de ciudadanía' },
+  { value: 'CE', label: 'Cédula de extranjería' },
+  { value: 'TI', label: 'Tarjeta de identidad' },
+  { value: 'PAS', label: 'Pasaporte' },
+]
+
+/** Valida el documento en el navegador (el backend vuelve a validarlo). Devuelve '' si está bien. */
+export function errorDocumento(tipo, numero) {
+  const limpio = (numero || '').replace(/[\s.-]/g, '')
+  if (!limpio) return 'Escribe tu número de documento.'
+  const reglas = {
+    CC: [/^\d{6,10}$/, 'La cédula debe tener entre 6 y 10 números.'],
+    TI: [/^\d{6,11}$/, 'La tarjeta de identidad debe tener entre 6 y 11 números.'],
+    CE: [/^[A-Za-z0-9]{4,12}$/, 'Entre 4 y 12 letras o números.'],
+    PAS: [/^[A-Za-z0-9]{5,15}$/, 'Entre 5 y 15 letras o números.'],
+  }
+  const [patron, mensaje] = reglas[tipo] || reglas.CC
+  return patron.test(limpio) ? '' : mensaje
+}
+
 export const ESTADOS_PEDIDO = {
   pendiente: 'Pendiente',
   confirmado: 'Confirmado',

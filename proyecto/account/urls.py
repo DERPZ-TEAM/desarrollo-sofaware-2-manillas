@@ -13,6 +13,7 @@ router = DefaultRouter()
 router.register('categorias', catalogo.CategoriaViewSet, basename='categoria')
 router.register('productos', catalogo.ProductoViewSet, basename='producto')
 router.register('admin/pedidos', admin.PedidoAdminViewSet, basename='admin-pedido')
+router.register('admin/clientes', admin.ClienteAdminViewSet, basename='admin-cliente')
 
 urlpatterns = [
     path('salud/', salud_view),
@@ -38,7 +39,8 @@ urlpatterns = [
 
     # --- Administrador ---
     path('admin/dashboard/', admin.dashboard_view),
-    path('admin/clientes/', admin.clientes_admin_view),
+    path('admin/papelera/', admin.papelera_view),
+    path('admin/papelera/<str:tipo>/<int:objeto_id>/', admin.papelera_accion_view),
     path('admin/inventario/', admin.inventario_view),
     path('admin/reportes/ingresos/', admin.reporte_ingresos_view),
     path('admin/reportes/mas-vendidos/', admin.reporte_mas_vendidos_view),

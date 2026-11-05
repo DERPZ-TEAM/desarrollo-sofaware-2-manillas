@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import AuthShell from '../../components/AuthShell'
 import { Alert, Field } from '../../components/ui'
 import { useAuth } from '../../context/AuthContext'
+import PasswordInput from '../../components/PasswordInput'
 
 /** Login EXCLUSIVO del administrador: usa /api/auth/admin/login/. */
 export default function AdminLogin() {
@@ -43,7 +44,7 @@ export default function AdminLogin() {
           <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} autoComplete="username" autoFocus />
         </Field>
         <Field label="Contraseña">
-          <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} autoComplete="current-password" />
+          <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} autoComplete="current-password" />
         </Field>
         <button className="btn btn-gold btn-block" disabled={loading}>{loading ? 'Verificando…' : 'Entrar al panel'}</button>
       </form>

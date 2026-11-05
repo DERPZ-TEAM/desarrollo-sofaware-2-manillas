@@ -10,6 +10,7 @@ const LINKS = [
   { to: '/admin/pedidos', label: 'Pedidos', icon: '◎' },
   { to: '/admin/clientes', label: 'Clientes', icon: '◉' },
   { to: '/admin/reportes', label: 'Reportes', icon: '▲' },
+  { to: '/admin/papelera', label: 'Papelera', icon: '⌫' },
 ]
 
 /** Estructura del panel de administración: menú lateral oscuro + contenido. */

@@ -67,7 +67,12 @@ class Command(BaseCommand):
         clave_admin = self._clave('SEED_ADMIN_PASSWORD', 'AdminGold123')
         clave_cliente = self._clave('SEED_CLIENTE_PASSWORD', 'Cliente123')
 
-        if clave_admin:
+        # El admin de ejemplo solo se crea si la tienda aún no tiene ningún otro
+        # administrador. Así, si se borra, no vuelve a aparecer en cada despliegue.
+        otro_admin = User.objects.filter(is_staff=True).exclude(username='admin').exists()
+        if clave_admin and otro_admin and not User.objects.filter(username='admin').exists():
+            self.stdout.write('  Ya hay un administrador propio: no se crea el admin de ejemplo.')
+        elif clave_admin:
             admin, creado = User.objects.get_or_create(
                 username='admin',
                 defaults={'email': 'admin@goldbracelets.com', 'first_name': 'Ana', 'last_name': 'Gestión'},
@@ -116,6 +121,8 @@ class Command(BaseCommand):
                 creados += 1
 
         self.stdout.write(self.style.SUCCESS('Datos iniciales listos.'))
-        self.stdout.write('  Admin   -> usuario: admin    (panel /admin/ingresar)')
-        self.stdout.write('  Cliente -> usuario: cliente  (tienda /ingresar)')
+        if User.objects.filter(username='admin').exists():
+            self.stdout.write('  Admin   -> usuario: admin    (panel /admin/ingresar)')
+        if User.objects.filter(username='cliente').exists():
+            self.stdout.write('  Cliente -> usuario: cliente  (tienda /ingresar)')
         self.stdout.write(f'  Productos de ejemplo creados: {creados} (total: {Producto.objects.count()})')

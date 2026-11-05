@@ -14,6 +14,7 @@ router.register('categorias', catalogo.CategoriaViewSet, basename='categoria')
 router.register('productos', catalogo.ProductoViewSet, basename='producto')
 router.register('admin/pedidos', admin.PedidoAdminViewSet, basename='admin-pedido')
 router.register('admin/clientes', admin.ClienteAdminViewSet, basename='admin-cliente')
+router.register('admin/usuarios', admin.UsuarioAdminViewSet, basename='admin-usuario')
 
 urlpatterns = [
     path('salud/', salud_view),

@@ -53,6 +53,9 @@ Session pooler de Supabase, SSL `require`, primero un backup, solo `SELECT` o tr
 **¿Usuario y cliente son lo mismo?**
 No. **Usuario** es una cuenta para entrar (usuario + contraseña + rol). **Cliente** es la persona que compra, identificada por su documento. Un admin es usuario pero no cliente; quien compra en el local es cliente sin usuario. Relación `usuario 1 : 0..1 cliente` (FK `cliente.usuario_id` opcional y única). El pedido apunta al **cliente** (`PROTECT`) y guarda qué cuenta lo registró (`registrado_por`).
 
+**¿Cuándo un usuario se vuelve cliente?**
+En su **primera compra**. Registrarse solo crea la cuenta; el checkout pide el documento y en ese momento se crea la ficha de cliente (dentro de la misma transacción del pedido, así que si la compra falla no queda un cliente a medias). Por eso en la tabla `cliente` solo hay personas que compraron. Si el documento es de alguien que ya compró en el local sin cuenta, se enlaza su ficha en lugar de duplicarla.
+
 **¿Por qué el documento y no el nombre como llave?**
 Dos personas pueden llamarse igual. La PK sigue siendo `id` (número que nunca cambia); el documento es una llave **candidata** protegida con un índice único `(tipo_documento, numero_documento)`.
 
@@ -159,7 +162,7 @@ El plan gratis de Render "duerme" el servicio tras 15 minutos sin uso; la primer
 ## H. Calidad
 
 **40. ¿Cómo saben que funciona?**
-39 pruebas automáticas (`python manage.py test account`) que cubren registro, login, permisos, CRUD con imagen, filtros, carrito, checkout con descuento, rollback por falta de stock, estados de pedido, cancelación con devolución de stock y reportes. Además pruebas manuales del flujo completo en el navegador.
+42 pruebas automáticas (`python manage.py test account`) que cubren registro, login, permisos, CRUD con imagen, filtros, carrito, checkout con descuento, rollback por falta de stock, estados de pedido, cancelación con devolución de stock y reportes. Además pruebas manuales del flujo completo en el navegador.
 
 ---
 

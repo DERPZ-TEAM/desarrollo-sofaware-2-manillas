@@ -23,6 +23,7 @@ Migraciones del proyecto:
 | `0009_cliente_y_papelera` | Crea la tabla **`cliente`**, agrega `eliminado_en` (Papelera) a producto y categoría, agrega `pedido.cliente_id` (aún opcional) y renombra `pedido.usuario_id` → `registrado_por_id` |
 | `0010_datos_clientes` | **Paso de datos:** por cada usuario cliente (o que tenga pedidos) crea su fila en `cliente` copiando nombre, correo, teléfono y dirección del perfil, y enlaza sus pedidos. Los administradores no se vuelven clientes |
 | `0011_cliente_obligatorio` | `pedido.cliente_id` pasa a obligatorio (`PROTECT`) y se quitan del perfil los datos personales que ya se copiaron a `cliente` |
+| `0012_cliente_solo_si_compra` | **Regla nueva: cliente = el que compró.** Quita las fichas de cliente de las cuentas que nunca hicieron un pedido (siguen siendo usuarios). No toca clientes con pedidos, clientes del local ni lo que está en la Papelera |
 
 > ¿Por qué tres migraciones y no una? PostgreSQL no deja cambiar la estructura de una tabla en la misma transacción en la que se acaban de modificar sus filas ("pending trigger events"). Por eso se separa: **crear columnas → copiar datos → volver obligatoria la columna**.
 
@@ -161,8 +162,18 @@ erDiagram
 | Datos | username, correo, contraseña (hash), `rol` | documento, nombres, teléfono, dirección |
 
 - Un administrador es usuario pero **no** es cliente.
-- Una persona que compra en el local es cliente pero **no** tiene usuario (`usuario_id = NULL`).
-- Si esa persona luego se registra en la web con el **mismo documento**, se le enlaza su cliente existente (no se duplica).
+- **Se es cliente solo al comprar.** Registrarse en la web crea únicamente el usuario. La ficha de cliente nace en la **primera compra**: el checkout pide el documento y guarda teléfono y dirección. Si la compra falla, la ficha tampoco se crea (va dentro de la misma transacción).
+- Una persona que compra en el local es cliente pero **no** tiene usuario (`usuario_id = NULL`). La registra el administrador en *Clientes → Registrar cliente*.
+- Si esa persona luego compra en la web con el **mismo documento**, se le enlaza su cliente existente (no se duplica y conserva su historial). Si el documento ya es de otra cuenta, la compra se rechaza.
+- En el panel hay dos pantallas: **Usuarios** (todas las cuentas, con "¿Es cliente?") y **Clientes** (solo los que compraron).
+
+| Persona | ¿Usuario? | ¿Cliente? |
+|---|---|---|
+| Se registró en la web y no ha comprado | Sí | No |
+| Se registró y compró | Sí | Sí (desde su primera compra) |
+| Compró en el local, sin cuenta | No | Sí |
+| El del local que luego compra en la web | Sí | Sí (la misma ficha) |
+| Administrador | Sí | No |
 - El pedido guarda las dos cosas: `cliente_id` (quién compra) y `registrado_por_id` (qué cuenta lo registró).
 
 `account_perfil` (1:1 con `auth_user`) guarda solo el **`rol`** de la cuenta (`cliente` o `admin`).

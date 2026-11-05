@@ -119,20 +119,42 @@ def quitar_item(usuario, item_id):
 # ---------------------------------------------------------------------------
 # Cliente de una cuenta
 # ---------------------------------------------------------------------------
-def obtener_cliente(usuario):
-    """Devuelve el Cliente de una cuenta; si no tiene, lo crea con sus datos.
+def cliente_para_compra(usuario, documento=None):
+    """El CLIENTE que hace esta compra. Aquí es donde un usuario se vuelve cliente.
 
-    Pasa por ejemplo con cuentas creadas desde /django-admin/.
+    - Si la cuenta ya es cliente (y tiene documento), se usa ese.
+    - Si no, se pide el documento:
+        * si ese documento es de un cliente del local SIN cuenta, se le enlaza
+          esta cuenta (misma persona, conserva su historial);
+        * si es de otra cuenta, se rechaza;
+        * si es nuevo, se crea el cliente.
+    Se llama dentro de la transacción del checkout: si la compra falla, tampoco
+    queda creado el cliente.
     """
-    try:
-        return usuario.cliente
-    except Cliente.DoesNotExist:
-        return Cliente.objects.create(
-            usuario=usuario,
-            nombres=usuario.first_name or usuario.username,
-            apellidos=usuario.last_name,
-            correo=usuario.email,
-        )
+    cliente = Cliente.objects.filter(usuario=usuario).first()
+    if cliente and cliente.numero_documento:
+        return cliente
+    if not documento or not documento.get('numero_documento'):
+        raise ErrorDeNegocio('Escribe tu número de documento para continuar con la compra.')
+
+    otro = Cliente.todos.filter(**documento).exclude(pk=getattr(cliente, 'pk', None)).first()
+    if otro is not None:
+        if otro.usuario_id or cliente is not None:
+            raise ErrorDeNegocio('Ese documento ya está registrado con otra cuenta.')
+        cliente = otro                       # compró en el local: es la misma persona
+        cliente.usuario = usuario
+        cliente.eliminado_en = None
+    elif cliente is None:
+        cliente = Cliente(usuario=usuario)   # primera compra: nace el cliente
+
+    if not cliente.pk or cliente.usuario_id == usuario.pk:
+        cliente.nombres = usuario.first_name or cliente.nombres or usuario.username
+        cliente.apellidos = usuario.last_name or cliente.apellidos
+        cliente.correo = usuario.email or cliente.correo
+    cliente.tipo_documento = documento['tipo_documento']
+    cliente.numero_documento = documento['numero_documento']
+    cliente.save()
+    return cliente
 
 
 # ---------------------------------------------------------------------------
@@ -159,16 +181,7 @@ def crear_pedido_desde_carrito(usuario, datos_envio, documento=None):
     if not items:
         raise ErrorDeNegocio('Tu carrito está vacío.')
 
-    cliente = obtener_cliente(usuario)
-    if not cliente.numero_documento:
-        # Clientes antiguos: les pedimos el documento antes de su primera compra
-        if not documento or not documento.get('numero_documento'):
-            raise ErrorDeNegocio('Escribe tu número de documento para continuar con la compra.')
-        if Cliente.todos.filter(**documento).exclude(pk=cliente.pk).exists():
-            raise ErrorDeNegocio('Ese documento ya está registrado con otro cliente.')
-        cliente.tipo_documento = documento['tipo_documento']
-        cliente.numero_documento = documento['numero_documento']
-        cliente.save(update_fields=['tipo_documento', 'numero_documento', 'actualizado'])
+    cliente = cliente_para_compra(usuario, documento)
 
     ids = sorted(i.producto_id for i in items)          # orden fijo evita bloqueos cruzados
     productos = {p.id: p for p in Producto.objects.select_for_update().filter(pk__in=ids).order_by('id')}

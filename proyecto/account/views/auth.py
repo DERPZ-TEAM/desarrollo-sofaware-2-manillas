@@ -15,6 +15,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -72,6 +73,7 @@ def cerrar_todas_las_sesiones(user):
 def tokens_para(user):
     """Genera el par de tokens JWT + los datos públicos del usuario."""
     refresh = RefreshToken.for_user(user)
+    update_last_login(None, user)            # "último ingreso" en el panel de Usuarios
     refresh['rol'] = 'admin' if es_admin(user) else 'cliente'   # dato extra dentro del token
     return {
         'access': str(refresh.access_token),

@@ -47,6 +47,8 @@ CREATE TABLE account_perfil (
 CREATE INDEX account_perfil_rol_idx ON account_perfil (rol);
 
 -- CLIENTE = la PERSONA que compra (no es lo mismo que USUARIO = la cuenta para entrar).
+--   * Solo es cliente quien COMPRÓ: la fila se crea en su primera compra web
+--     (o la crea el administrador si compró en el local).
 --   * Un cliente puede tener cuenta web (usuario_id) o no (compra en el local).
 --   * Un usuario administrador NO es cliente.
 --   Relación usuario 1 : 0..1 cliente.

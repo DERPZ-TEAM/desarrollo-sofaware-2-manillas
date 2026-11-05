@@ -4,16 +4,21 @@ import { Alert, EmptyState, Field, Loader, Modal, StatusBadge } from '../../comp
 import { IMAGEN_RESPALDO, money } from '../../utils/format'
 
 const VACIO = {
+  referencia: '', tipo_pieza: 'otro', piedra: '',
   nombre: '', descripcion: '', precio: '', stock: 0, stock_minimo: 3, categoria: '', activo: true,
   tipo_oro: '', quilates: '', peso_gramos: '', talla_cm: '', elaboracion: '', imagen: null, quitar_imagen: false,
 }
+// Mismo formato que el backend (account/referencias.py)
+const REFERENCIA_VALIDA = /^[A-Z0-9]+(-[A-Z0-9]+)*$/
+const normalizarReferencia = (t) => (t || '').trim().toUpperCase().replace(/[\s_/]+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '')
 const MAX_MB = 5
 
 /** CRUD de productos (HU-IN-006, 007, 008, 009, 010). */
 export default function AdminProducts() {
   const [items, setItems] = useState(null)
   const [cats, setCats] = useState([])
-  const [opciones, setOpciones] = useState({ tipos_oro: [], quilates: [], elaboracion: [] })
+  const [opciones, setOpciones] = useState({ tipos_oro: [], quilates: [], elaboracion: [], tipos_pieza: [], piedras: [] })
+  const [generando, setGenerando] = useState(false)
   const [filtro, setFiltro] = useState({ q: '', categoria: '', activo: '' })
   const [form, setForm] = useState(VACIO)
   const [editando, setEditando] = useState(null)   // null = cerrado, 'nuevo' o el producto
@@ -55,6 +60,22 @@ export default function AdminProducts() {
     setEditando(p || 'nuevo')
   }
 
+  // Pide al servidor la siguiente referencia libre según tipo, quilates, color y piedra
+  async function generarReferencia() {
+    setGenerando(true)
+    try {
+      const qs = new URLSearchParams({
+        tipo_pieza: form.tipo_pieza || 'otro', quilates: form.quilates || '', tipo_oro: form.tipo_oro || '', piedra: form.piedra || '',
+      })
+      const r = await api(`/productos/sugerir-referencia/?${qs}`)
+      set('referencia', r.referencia)
+    } catch (e) {
+      setErrors((x) => ({ ...x, referencia: e.message }))
+    } finally {
+      setGenerando(false)
+    }
+  }
+
   function elegirImagen(file) {
     if (!file) return
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
@@ -77,6 +98,10 @@ export default function AdminProducts() {
     if (!(Number(form.precio) > 0)) e.precio = 'Debe ser mayor a 0.'
     if (!(Number(form.stock) >= 0) || !Number.isInteger(Number(form.stock))) e.stock = 'Número entero ≥ 0.'
     if (!form.categoria) e.categoria = 'Selecciona una categoría.'
+    const ref = normalizarReferencia(form.referencia)
+    if (ref && (ref.length < 3 || ref.length > 40 || !REFERENCIA_VALIDA.test(ref))) {
+      e.referencia = 'De 3 a 40 letras, números y guiones. Ej.: AN-18K-BL-DI-001.'
+    }
     return e
   }
 
@@ -130,7 +155,7 @@ export default function AdminProducts() {
       <Alert type={msg.type} onClose={() => setMsg({ type: '', text: '' })}>{msg.text}</Alert>
 
       <div className="toolbar">
-        <input placeholder="Buscar por nombre…" value={filtro.q} onChange={(e) => setFiltro({ ...filtro, q: e.target.value })} />
+        <input placeholder="Buscar por referencia o nombre…" value={filtro.q} onChange={(e) => setFiltro({ ...filtro, q: e.target.value })} />
         <select value={filtro.categoria} onChange={(e) => setFiltro({ ...filtro, categoria: e.target.value })}>
           <option value="">Todas las categorías</option>
           {cats.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -147,13 +172,14 @@ export default function AdminProducts() {
       ) : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Pieza</th><th>Categoría</th><th>Material</th><th>Precio</th><th>Stock</th><th>Estado</th><th className="right">Acciones</th></tr></thead>
+            <thead><tr><th>Referencia</th><th>Pieza</th><th>Categoría</th><th>Material</th><th>Precio</th><th>Stock</th><th>Estado</th><th className="right">Acciones</th></tr></thead>
             <tbody>
               {items.map((p) => (
                 <tr key={p.id}>
+                  <td><code>{p.referencia}</code></td>
                   <td><div className="cell-product"><img src={p.imagen_url || IMAGEN_RESPALDO} alt="" /><b>{p.nombre}</b></div></td>
                   <td>{p.categoria_nombre || <span className="muted">Sin categoría</span>}</td>
-                  <td>{[p.tipo_oro_display, p.quilates && `${p.quilates}k`].filter(Boolean).join(' · ') || '—'}</td>
+                  <td>{[p.tipo_oro_display, p.quilates && `${p.quilates}k`, p.piedra && p.piedra_display].filter(Boolean).join(' · ') || '—'}</td>
                   <td>{money(p.precio)}</td>
                   <td><StatusBadge estado={p.estado_stock}>{p.stock}</StatusBadge></td>
                   <td>{p.activo ? <StatusBadge estado="activo">Visible</StatusBadge> : <StatusBadge estado="oculto">Oculto</StatusBadge>}</td>
@@ -187,6 +213,18 @@ export default function AdminProducts() {
                 </select>
               </Field>
               <h4 className="form-section">Ficha técnica</h4>
+              <div className="two">
+                <Field label="Tipo de pieza" error={errors.tipo_pieza}>
+                  <select value={form.tipo_pieza} onChange={(e) => set('tipo_pieza', e.target.value)}>
+                    {opciones.tipos_pieza.map((o) => <option key={o.value} value={o.value}>{o.label} ({o.codigo})</option>)}
+                  </select>
+                </Field>
+                <Field label="Piedra" error={errors.piedra}>
+                  <select value={form.piedra} onChange={(e) => set('piedra', e.target.value)}>
+                    {opciones.piedras.map((o) => <option key={o.value} value={o.value}>{o.label} ({o.codigo})</option>)}
+                  </select>
+                </Field>
+              </div>
               <div className="three">
                 <Field label="Tipo de oro" error={errors.tipo_oro}>
                   <select value={form.tipo_oro} onChange={(e) => set('tipo_oro', e.target.value)}>
@@ -207,6 +245,18 @@ export default function AdminProducts() {
                   </select>
                 </Field>
               </div>
+              <Field
+                label="Referencia (etiqueta)"
+                error={errors.referencia}
+                hint={editando === 'nuevo'
+                  ? 'Déjala vacía y se genera sola: TIPO-QUILATES-COLOR-PIEDRA-NÚMERO. O escribe la tuya.'
+                  : 'Es la de la etiqueta impresa: cámbiala solo si vas a reetiquetar la pieza.'}
+              >
+                <div className="input-con-boton">
+                  <input value={form.referencia} onChange={(e) => set('referencia', e.target.value.toUpperCase())} placeholder="AN-18K-BL-DI-001" />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={generarReferencia} disabled={generando}>{generando ? '…' : 'Generar'}</button>
+                </div>
+              </Field>
               <div className="two">
                 <Field label="Peso (g)" error={errors.peso_gramos}><input type="number" step="0.01" min="0" value={form.peso_gramos || ''} onChange={(e) => set('peso_gramos', e.target.value)} /></Field>
                 <Field label="Talla (cm)" error={errors.talla_cm}><input type="number" step="0.5" min="10" max="30" value={form.talla_cm || ''} onChange={(e) => set('talla_cm', e.target.value)} /></Field>

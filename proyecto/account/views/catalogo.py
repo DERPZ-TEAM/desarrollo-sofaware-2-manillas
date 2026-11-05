@@ -12,13 +12,13 @@ del CRUD (Create, Read, Update, Delete):
 """
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Count, F, Q, Sum
+from django.db.models import Case, Count, F, IntegerField, Q, Sum, When
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
-from .. import services
+from .. import referencias, services
 from ..exceptions import ErrorDeNegocio
 from ..models import Categoria, Pedido, Producto
 from ..permissions import LecturaPublicaEscrituraAdmin, es_admin
@@ -90,9 +90,13 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 raise ErrorDeNegocio('La categoría seleccionada no es válida.')
             qs = qs.filter(categoria_id=p['categoria'])
 
-        q = (p.get('q') or '').strip()                       # HU-VE-013 búsqueda por nombre
+        q = (p.get('q') or '').strip()                       # HU-VE-013 búsqueda por nombre o referencia
         if q:
-            qs = qs.filter(Q(nombre__icontains=q) | Q(descripcion__icontains=q))
+            qs = qs.filter(Q(nombre__icontains=q) | Q(descripcion__icontains=q)
+                           | Q(referencia__startswith=referencias.normalizar(q)))
+
+        if p.get('referencia'):                              # exacta: la que lee el lector de códigos
+            qs = qs.filter(referencia=referencias.normalizar(p['referencia']))
 
         precio_min = _decimal(p['precio_min'], 'precio mínimo') if p.get('precio_min') else None
         precio_max = _decimal(p['precio_max'], 'precio máximo') if p.get('precio_max') else None
@@ -116,6 +120,38 @@ class ProductoViewSet(viewsets.ModelViewSet):
             qs = qs.filter(stock__gt=0)
 
         return qs.order_by(self.ORDENES.get(p.get('orden'), '-creado'), 'id')
+
+    def list(self, request, *args, **kwargs):
+        """Con ?limite=N devuelve solo los N primeros (buscador rápido del panel).
+
+        Si se busca con ?q=, primero salen los productos cuya referencia empieza
+        por lo escrito, después los que coinciden por nombre.
+        """
+        qs = self.get_queryset()
+        limite = request.query_params.get('limite')
+        if limite:
+            if not limite.isdigit():
+                raise ErrorDeNegocio('El límite debe ser un número.')
+            q = referencias.normalizar(request.query_params.get('q'))
+            if q:
+                qs = qs.annotate(prioridad=Case(When(referencia__startswith=q, then=0), default=1,
+                                                output_field=IntegerField())).order_by('prioridad', 'referencia')
+            qs = qs[:min(max(int(limite), 1), 50)]
+        return Response(ProductoListSerializer(qs, many=True, context={'request': request}).data)
+
+    @action(detail=False, methods=['get'], url_path='sugerir-referencia')
+    def sugerir_referencia(self, request):
+        """GET /api/productos/sugerir-referencia/?tipo_pieza=anillo&quilates=18&tipo_oro=blanco&piedra=diamante
+        -> {"referencia": "AN-18K-BL-DI-003"}  (solo admin)"""
+        if not es_admin(request.user):
+            raise ErrorDeNegocio('Solo el administrador puede realizar esta acción.', 403)
+        p = request.query_params
+        quilates = p.get('quilates') or None
+        if quilates and (not quilates.isdigit() or int(quilates) not in dict(Producto.QUILATES)):
+            raise ErrorDeNegocio('Los quilates no son válidos.')
+        borrador = Producto(tipo_pieza=p.get('tipo_pieza') or 'otro', quilates=quilates,
+                            tipo_oro=p.get('tipo_oro') or '', piedra=p.get('piedra') or '')
+        return Response({'referencia': borrador.generar_referencia()})
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -187,6 +223,8 @@ class ProductoViewSet(viewsets.ModelViewSet):
             'tipos_oro': [{'value': k, 'label': v} for k, v in Producto.TIPOS_ORO],
             'quilates': [{'value': k, 'label': v} for k, v in Producto.QUILATES],
             'elaboracion': [{'value': k, 'label': v} for k, v in Producto.ELABORACION],
+            'tipos_pieza': [{'value': v, 'label': t, 'codigo': c} for v, t, c in referencias.TIPOS_PIEZA],
+            'piedras': [{'value': v, 'label': t, 'codigo': c} for v, t, c in referencias.PIEDRAS],
             'tallas': ['16', '18', '20'],
             'metodos_pago': [{'value': k, 'label': v} for k, v in Pedido.METODOS_PAGO],
         })

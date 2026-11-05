@@ -25,8 +25,10 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils.text import slugify
+
+from . import referencias
 
 
 class VigentesManager(models.Manager):
@@ -161,6 +163,10 @@ class Producto(models.Model):
     peso_gramos = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     talla_cm = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
     elaboracion = models.CharField(max_length=10, choices=ELABORACION, blank=True, default='')
+    # Referencia (SKU) de la etiqueta: ver account/referencias.py
+    tipo_pieza = models.CharField(max_length=12, choices=referencias.TIPOS_PIEZA_CHOICES, default='otro')
+    piedra = models.CharField(max_length=12, choices=referencias.PIEDRAS_CHOICES, blank=True, default='')
+    referencia = models.CharField(max_length=referencias.LARGO_MAXIMO, unique=True)
     eliminado_en = models.DateTimeField(null=True, blank=True, db_index=True)   # papelera
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)
@@ -176,12 +182,34 @@ class Producto(models.Model):
         indexes = [
             models.Index(fields=['activo', 'categoria']),
             models.Index(fields=['precio']),
+            # La referencia no necesita índice extra: por ser unique, Django crea en
+            # PostgreSQL el índice único y otro "_like" (varchar_pattern_ops) que hace
+            # rápida la búsqueda por el comienzo (LIKE 'AN-18K%') aunque haya millones.
         ]
+
+    def prefijo_referencia(self):
+        return referencias.prefijo(self.tipo_pieza, self.quilates, self.tipo_oro, self.piedra)
+
+    def generar_referencia(self):
+        """Siguiente referencia libre según tipo, quilates, color y piedra."""
+        inicio = self.prefijo_referencia()
+        usadas = Producto.todos.filter(referencia__startswith=inicio + '-').values_list('referencia', flat=True)
+        return referencias.siguiente(inicio, usadas)
 
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = generar_slug_unico(Producto, self.nombre, self.pk)
-        super().save(*args, **kwargs)
+        automatica = not self.referencia
+        for intento in range(5):
+            if automatica:
+                self.referencia = self.generar_referencia()
+            try:
+                with transaction.atomic():           # si dos admins crean a la vez, reintenta
+                    super().save(*args, **kwargs)
+                return
+            except IntegrityError:
+                if not automatica or intento == 4:
+                    raise
 
     @property
     def estado_stock(self):
@@ -379,6 +407,7 @@ class ItemPedido(models.Model):
         related_name='items_pedido',
     )
     nombre = models.CharField(max_length=120)
+    referencia = models.CharField(max_length=40, blank=True, default='')   # copia, como el nombre y el precio
     precio = models.DecimalField(max_digits=12, decimal_places=2)
     cantidad = models.PositiveIntegerField(validators=[MinValueValidator(1)])
 

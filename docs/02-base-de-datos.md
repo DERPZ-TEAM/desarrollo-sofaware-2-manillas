@@ -24,6 +24,9 @@ Migraciones del proyecto:
 | `0010_datos_clientes` | **Paso de datos:** por cada usuario cliente (o que tenga pedidos) crea su fila en `cliente` copiando nombre, correo, teléfono y dirección del perfil, y enlaza sus pedidos. Los administradores no se vuelven clientes |
 | `0011_cliente_obligatorio` | `pedido.cliente_id` pasa a obligatorio (`PROTECT`) y se quitan del perfil los datos personales que ya se copiaron a `cliente` |
 | `0013_pago_efectivo` | Agrega el método de pago **efectivo**, usado solo en las ventas del local |
+| `0014_referencias_campos` | Agrega `tipo_pieza`, `piedra` y `referencia` (todavía opcional) a producto, y `referencia` a item_pedido |
+| `0015_referencias_datos` | **Paso de datos:** a cada producto existente le deduce el tipo (por la categoría o el nombre) y la piedra (por el nombre y la descripción), le arma su referencia y la copia en sus ventas pasadas |
+| `0016_referencia_obligatoria` | La referencia pasa a ser obligatoria y única |
 | `0012_cliente_solo_si_compra` | **Regla nueva: cliente = el que compró.** Quita las fichas de cliente de las cuentas que nunca hicieron un pedido (siguen siendo usuarios). No toca clientes con pedidos, clientes del local ni lo que está en la Papelera |
 
 > ¿Por qué tres migraciones y no una? PostgreSQL no deja cambiar la estructura de una tabla en la misma transacción en la que se acaban de modificar sus filas ("pending trigger events"). Por eso se separa: **crear columnas → copiar datos → volver obligatoria la columna**.
@@ -194,6 +197,30 @@ Cuando el administrador pulsa **Eliminar** en Productos, Categorías o Clientes,
 - Un producto en la papelera se quita de los carritos; un cliente en la papelera deja su cuenta web desactivada (`is_active = false`) hasta restaurarlo.
 - **No se puede eliminar definitivamente** un cliente con pedidos (son registros contables: `PROTECT`). Un producto sí: el historial de ventas se conserva porque `item_pedido` guarda nombre y precio copiados.
 - No se pueden crear dos categorías con el mismo nombre aunque una esté en la papelera: el sistema pide restaurarla.
+
+## 4.2 Referencias de producto (SKU)
+
+Cada producto tiene una **referencia**: el código que va en la etiqueta de la pieza en la vitrina. Sirve para que el administrador encuentre el producto al instante en *Registrar venta en el local*, escribiéndolo o con un **lector de código de barras** (el lector escribe el código y presiona Enter).
+
+**Formato:** `TIPO-QUILATES-COLOR-PIEDRA-NNN`
+
+| Parte | Códigos |
+|---|---|
+| Tipo de pieza | PL pulsera/manilla · BR brazalete · CD cadena/collar · AR aretes · AN anillo · RL reloj · DJ dije · OT otra |
+| Quilates | 10K · 14K · 18K · 24K (se omite si no aplica, por ejemplo en laminado) |
+| Color del oro | AM amarillo · BL blanco · RS rosa · LM laminado · GF golfi |
+| Piedra | SO solo oro · DI diamante · ES esmeralda · RU rubí · ZA zafiro · CZ circonia · CU cuarzo · PE perla · OT otra |
+| Consecutivo | 001, 002… por cada combinación |
+
+Ejemplos: `AN-18K-BL-DI-001` (anillo 18k oro blanco con diamante), `PL-18K-AM-SO-004` (pulsera 18k oro amarillo, solo oro), `RL-LM-SO-002` (reloj laminado).
+
+Reglas:
+- La referencia identifica el **tipo de producto**, no cada pieza física: 100 pulseras iguales comparten la misma referencia y el `stock` dice cuántas hay. Cada variación (otra talla, color o piedra) es otro producto con otra referencia.
+- Si el administrador la deja vacía, el sistema la **genera sola** (botón *Generar* en el formulario); también puede escribir la suya (se guarda en mayúsculas y con guiones).
+- Es **única** (`UNIQUE`), incluidos los productos de la Papelera, para que una etiqueta impresa nunca apunte a dos productos.
+- Una vez creada **no cambia sola** aunque se edite el producto, porque ya está impresa en la etiqueta.
+- Cada venta guarda una **copia** de la referencia (`item_pedido.referencia`), igual que el nombre y el precio.
+- La búsqueda es por el **comienzo** de la referencia (`LIKE 'AN-18K%'`), que PostgreSQL resuelve con índice aunque haya millones de productos. El buscador del panel pide al servidor máximo 8 resultados, así que el navegador nunca descarga el catálogo completo.
 
 ## 5. Conectar pgAdmin a la base de producción SIN perder datos
 

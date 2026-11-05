@@ -224,7 +224,7 @@ def _guardar_pedido(cliente, registrado_por, lineas, estado, datos):
         **datos,
     )
     ItemPedido.objects.bulk_create([
-        ItemPedido(pedido=pedido, producto=p, nombre=p.nombre, precio=p.precio, cantidad=c)
+        ItemPedido(pedido=pedido, producto=p, nombre=p.nombre, referencia=p.referencia, precio=p.precio, cantidad=c)
         for p, c in lineas
     ])
     for producto, cantidad in lineas:

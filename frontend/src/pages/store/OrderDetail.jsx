@@ -81,7 +81,7 @@ export default function OrderDetail() {
           <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th className="right">Subtotal</th></tr></thead>
           <tbody>
             {pedido.items.map((i) => (
-              <tr key={i.id}><td>{i.nombre}</td><td>{i.cantidad}</td><td>{money(i.precio)}</td><td className="right">{money(i.subtotal)}</td></tr>
+              <tr key={i.id}><td>{i.nombre}{i.referencia && <><br /><small className="muted">Ref. {i.referencia}</small></>}</td><td>{i.cantidad}</td><td>{money(i.precio)}</td><td className="right">{money(i.subtotal)}</td></tr>
             ))}
           </tbody>
         </table>

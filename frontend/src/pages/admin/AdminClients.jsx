@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import { Alert, EmptyState, Field, Loader, Modal, Reintentar, StatusBadge } from '../../components/ui'
 import { TIPOS_DOCUMENTO, errorDocumento, fecha, money } from '../../utils/format'
+import VentaLocalModal from './VentaLocalModal'
 
 const VACIO = {
   tipo_documento: 'CC', numero_documento: '', nombres: '', apellidos: '', correo: '',
@@ -18,7 +19,8 @@ export default function AdminClients() {
   const [items, setItems] = useState(null)
   const [error, setError] = useState('')
   const [msg, setMsg] = useState({ type: '', text: '' })
-  const [editando, setEditando] = useState(null)   // null = cerrado, 'nuevo' o el cliente
+  const [editando, setEditando] = useState(null)   // null = cerrado, o el cliente que se edita
+  const [venta, setVenta] = useState(null)         // null = cerrado, 'nuevo' o el cliente que compra
   const [form, setForm] = useState(VACIO)
   const [errors, setErrors] = useState({})
   const [guardando, setGuardando] = useState(false)
@@ -34,10 +36,16 @@ export default function AdminClients() {
 
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); setErrors((e) => ({ ...e, [k]: undefined })) }
 
-  function abrir(c = null) {
+  function abrir(c) {
     setErrors({})
-    setForm(c ? Object.fromEntries(Object.keys(VACIO).map((k) => [k, c[k] ?? ''])) : VACIO)
-    setEditando(c || 'nuevo')
+    setForm(Object.fromEntries(Object.keys(VACIO).map((k) => [k, c[k] ?? ''])))
+    setEditando(c)
+  }
+
+  function ventaGuardada(texto) {
+    setVenta(null)
+    setMsg({ type: 'ok', text: texto })
+    cargar()
   }
 
   async function guardar(ev) {
@@ -51,9 +59,8 @@ export default function AdminClients() {
     if (Object.keys(e).length) return
     setGuardando(true)
     try {
-      if (editando === 'nuevo') await api('/admin/clientes/', { method: 'POST', body: form })
-      else await api(`/admin/clientes/${editando.id}/`, { method: 'PATCH', body: form })
-      setMsg({ type: 'ok', text: editando === 'nuevo' ? 'Cliente registrado correctamente.' : 'Datos del cliente actualizados.' })
+      await api(`/admin/clientes/${editando.id}/`, { method: 'PATCH', body: form })
+      setMsg({ type: 'ok', text: 'Datos del cliente actualizados.' })
       setEditando(null)
       cargar()
     } catch (err) {
@@ -80,7 +87,7 @@ export default function AdminClients() {
     <>
       <div className="page-head">
         <div><h1>Clientes</h1><p className="muted">Personas que ya compraron, en la web o en el local. Las cuentas que aún no compran están en Usuarios.</p></div>
-        <button className="btn btn-gold" onClick={() => abrir()}>+ Registrar cliente</button>
+        <button className="btn btn-gold" onClick={() => setVenta('nuevo')}>+ Registrar venta en el local</button>
       </div>
       <Alert>{error}</Alert>
       <Alert type={msg.type} onClose={() => setMsg({ type: '', text: '' })}>{msg.text}</Alert>
@@ -100,6 +107,7 @@ export default function AdminClients() {
                   <td>{money(c.total_comprado)}</td>
                   <td>{fecha(c.creado)}</td>
                   <td className="row-actions right">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setVenta(c)}>Registrar venta</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => abrir(c)}>Editar</button>
                     <button className="btn btn-danger btn-sm" onClick={() => eliminar(c)}>Eliminar</button>
                   </td>
@@ -110,11 +118,15 @@ export default function AdminClients() {
         </div>
       )}
 
-      <Modal open={editando !== null} title={editando === 'nuevo' ? 'Registrar cliente' : 'Editar cliente'} onClose={() => setEditando(null)}>
+      <VentaLocalModal
+        open={venta !== null}
+        clienteFijo={venta && venta !== 'nuevo' ? venta : null}
+        onClose={() => setVenta(null)}
+        onSaved={ventaGuardada}
+      />
+
+      <Modal open={editando !== null} title="Editar cliente" onClose={() => setEditando(null)}>
         <form onSubmit={guardar} noValidate>
-          {editando === 'nuevo' && (
-            <p className="hint-box">Para clientes que compran en el local, sin cuenta web. Si luego compran en la página con el mismo documento, se les enlaza este cliente.</p>
-          )}
           <div className="two">
             <Field label="Tipo de documento">
               <select value={form.tipo_documento} onChange={(e) => set('tipo_documento', e.target.value)}>
@@ -140,7 +152,7 @@ export default function AdminClients() {
           </div>
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={() => setEditando(null)}>Cancelar</button>
-            <button className="btn btn-dark" disabled={guardando}>{guardando ? 'Guardando…' : editando === 'nuevo' ? 'Registrar' : 'Guardar cambios'}</button>
+            <button className="btn btn-dark" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
           </div>
         </form>
       </Modal>

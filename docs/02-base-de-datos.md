@@ -23,6 +23,7 @@ Migraciones del proyecto:
 | `0009_cliente_y_papelera` | Crea la tabla **`cliente`**, agrega `eliminado_en` (Papelera) a producto y categoría, agrega `pedido.cliente_id` (aún opcional) y renombra `pedido.usuario_id` → `registrado_por_id` |
 | `0010_datos_clientes` | **Paso de datos:** por cada usuario cliente (o que tenga pedidos) crea su fila en `cliente` copiando nombre, correo, teléfono y dirección del perfil, y enlaza sus pedidos. Los administradores no se vuelven clientes |
 | `0011_cliente_obligatorio` | `pedido.cliente_id` pasa a obligatorio (`PROTECT`) y se quitan del perfil los datos personales que ya se copiaron a `cliente` |
+| `0013_pago_efectivo` | Agrega el método de pago **efectivo**, usado solo en las ventas del local |
 | `0012_cliente_solo_si_compra` | **Regla nueva: cliente = el que compró.** Quita las fichas de cliente de las cuentas que nunca hicieron un pedido (siguen siendo usuarios). No toca clientes con pedidos, clientes del local ni lo que está en la Papelera |
 
 > ¿Por qué tres migraciones y no una? PostgreSQL no deja cambiar la estructura de una tabla en la misma transacción en la que se acaban de modificar sus filas ("pending trigger events"). Por eso se separa: **crear columnas → copiar datos → volver obligatoria la columna**.
@@ -163,7 +164,7 @@ erDiagram
 
 - Un administrador es usuario pero **no** es cliente.
 - **Se es cliente solo al comprar.** Registrarse en la web crea únicamente el usuario. La ficha de cliente nace en la **primera compra**: el checkout pide el documento y guarda teléfono y dirección. Si la compra falla, la ficha tampoco se crea (va dentro de la misma transacción).
-- Una persona que compra en el local es cliente pero **no** tiene usuario (`usuario_id = NULL`). La registra el administrador en *Clientes → Registrar cliente*.
+- Una persona que compra en el local es cliente pero **no** tiene usuario (`usuario_id = NULL`). El administrador la registra en *Clientes → Registrar venta en el local*: en una sola operación se crea (o se reutiliza, si el documento ya existe) el cliente **y su pedido** con los productos, se descuenta el stock y el pedido queda *entregado* con `registrado_por` = el administrador. Si falta stock no se guarda nada, ni siquiera el cliente. Ya no existe "registrar cliente" sin compra.
 - Si esa persona luego compra en la web con el **mismo documento**, se le enlaza su cliente existente (no se duplica y conserva su historial). Si el documento ya es de otra cuenta, la compra se rechaza.
 - En el panel hay dos pantallas: **Usuarios** (todas las cuentas, con "¿Es cliente?") y **Clientes** (solo los que compraron).
 

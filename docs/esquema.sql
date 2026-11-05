@@ -48,7 +48,7 @@ CREATE INDEX account_perfil_rol_idx ON account_perfil (rol);
 
 -- CLIENTE = la PERSONA que compra (no es lo mismo que USUARIO = la cuenta para entrar).
 --   * Solo es cliente quien COMPRÓ: la fila se crea en su primera compra web
---     (o la crea el administrador si compró en el local).
+--     (o cuando el administrador registra una venta en el local: cliente + pedido juntos).
 --   * Un cliente puede tener cuenta web (usuario_id) o no (compra en el local).
 --   * Un usuario administrador NO es cliente.
 --   Relación usuario 1 : 0..1 cliente.
@@ -154,7 +154,7 @@ CREATE TABLE pedido (
     estado              VARCHAR(20) NOT NULL DEFAULT 'pendiente'
                         CHECK (estado IN ('pendiente', 'confirmado', 'enviado', 'entregado', 'cancelado')),
     metodo_pago         VARCHAR(20) NOT NULL DEFAULT 'contraentrega'
-                        CHECK (metodo_pago IN ('contraentrega', 'transferencia', 'nequi', 'tarjeta')),
+                        CHECK (metodo_pago IN ('efectivo', 'contraentrega', 'transferencia', 'nequi', 'tarjeta')),
     nombre_destinatario VARCHAR(120) NOT NULL DEFAULT '',
     telefono_contacto   VARCHAR(20)  NOT NULL DEFAULT '',
     direccion_envio     VARCHAR(200) NOT NULL DEFAULT '',

@@ -3,32 +3,22 @@ import { api } from '../../api/client'
 import { Alert, EmptyState, Loader, Reintentar, StatusBadge } from '../../components/ui'
 import { fecha } from '../../utils/format'
 
-const FILTROS = [
-  { id: '', titulo: 'Todos' },
-  { id: 'si', titulo: 'Ya compraron (clientes)' },
-  { id: 'no', titulo: 'Aún no compran' },
-]
-
 /**
- * Usuarios: todas las CUENTAS de la página. Todos son usuarios; los que ya
- * compraron son además clientes (y aparecen también en Clientes).
+ * Usuarios: todas las CUENTAS de la página. La columna "¿Es cliente?" dice
+ * cuáles ya compraron (esas personas también aparecen en Clientes).
  */
 export default function AdminUsers() {
   const [q, setQ] = useState('')
-  const [filtro, setFiltro] = useState('')
   const [items, setItems] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const params = new URLSearchParams()
-    if (q) params.set('q', q)
-    if (filtro) params.set('es_cliente', filtro)
     const t = setTimeout(() => {
       setError('')
-      api(`/admin/usuarios/${params.toString() ? `?${params}` : ''}`).then(setItems).catch((e) => setError(e.message))
+      api(`/admin/usuarios/${q ? `?q=${encodeURIComponent(q)}` : ''}`).then(setItems).catch((e) => setError(e.message))
     }, 250)   // espera a que el usuario deje de escribir
     return () => clearTimeout(t)
-  }, [q, filtro])
+  }, [q])
 
   return (
     <>
@@ -39,11 +29,6 @@ export default function AdminUsers() {
         </div>
       </div>
       <Alert>{error}</Alert>
-      <div className="tabs">
-        {FILTROS.map((f) => (
-          <button key={f.id} className={filtro === f.id ? 'active' : ''} onClick={() => setFiltro(f.id)}>{f.titulo}</button>
-        ))}
-      </div>
       <div className="toolbar"><input placeholder="Buscar por usuario, nombre o correo…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {items === null ? (error ? <Reintentar /> : <Loader />) : items.length === 0 ? <EmptyState title="No hay usuarios" /> : (
         <div className="table-wrap">

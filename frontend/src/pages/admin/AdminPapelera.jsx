@@ -16,7 +16,7 @@ function nombreDe(tipo, x) {
 
 /**
  * Papelera: lo eliminado desde el panel (borrado LÓGICO).
- * Desde aquí se puede Restaurar o Eliminar definitivamente (borrado FÍSICO).
+ * Desde aquí se pueden restaurar los registros.
  */
 export default function AdminPapelera() {
   const [tab, setTab] = useState('productos')
@@ -28,19 +28,10 @@ export default function AdminPapelera() {
   const cargar = () => api('/admin/papelera/').then(setData).catch((e) => setError(e.message))
   useEffect(() => { cargar() }, [])
 
-  async function accion(x, metodo) {
-    const nombre = nombreDe(tab, x)
-    if (metodo === 'DELETE') {
-      const avisos = {
-        productos: 'Se borrará para siempre, junto con su foto. Las ventas pasadas se conservan.',
-        categorias: 'Se borrará para siempre. Sus productos quedarán "sin categoría".',
-        clientes: 'Se borrará para siempre, junto con su cuenta web si tiene.',
-      }
-      if (!window.confirm(`¿Eliminar DEFINITIVAMENTE "${nombre}"?\n\n${avisos[tab]}\n\nEsta acción NO se puede deshacer.`)) return
-    }
+  async function restaurar(x) {
     setOcupado(x.id)
     try {
-      const r = await api(`/admin/papelera/${tab}/${x.id}/`, { method: metodo })
+      const r = await api(`/admin/papelera/${tab}/${x.id}/`, { method: 'POST' })
       setMsg({ type: 'ok', text: r.detail })
       await cargar()
     } catch (e) {
@@ -57,7 +48,7 @@ export default function AdminPapelera() {
       <div className="page-head">
         <div>
           <h1>Papelera</h1>
-          <p className="muted">Lo que se eliminó desde el panel. Puedes restaurarlo o eliminarlo definitivamente.</p>
+          <p className="muted">Aquí puedes restaurar los productos, categorías y clientes que moviste a la Papelera.</p>
         </div>
       </div>
       <Alert>{error}</Alert>
@@ -91,8 +82,7 @@ export default function AdminPapelera() {
                   <td>{tab === 'productos' ? money(x.precio) : tab === 'categorias' ? x.total_productos : x.total_pedidos}</td>
                   <td>{fecha(x.eliminado_en, true)}</td>
                   <td className="row-actions right">
-                    <button className="btn btn-ghost btn-sm" disabled={ocupado === x.id} onClick={() => accion(x, 'POST')}>Restaurar</button>
-                    <button className="btn btn-danger btn-sm" disabled={ocupado === x.id} onClick={() => accion(x, 'DELETE')}>Eliminar definitivamente</button>
+                    <button className="btn btn-ghost btn-sm" disabled={ocupado === x.id} onClick={() => restaurar(x)}>Restaurar</button>
                   </td>
                 </tr>
               ))}

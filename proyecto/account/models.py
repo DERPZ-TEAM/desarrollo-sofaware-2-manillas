@@ -17,7 +17,7 @@ Usuario y cliente NO son lo mismo:
 
 Borrado lógico (papelera): productos, categorías y clientes tienen la columna
 "eliminado_en". Al eliminarlos desde el panel solo se llena esa fecha y dejan de
-verse; desde la Papelera se pueden restaurar o eliminar definitivamente.
+verse; desde la Papelera se pueden restaurar.
 """
 import uuid
 from decimal import Decimal

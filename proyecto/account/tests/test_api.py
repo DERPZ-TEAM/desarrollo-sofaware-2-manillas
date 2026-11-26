@@ -459,8 +459,12 @@ class ClientesYPapeleraTests(BaseAPITest):
         self.assertEqual(r.status_code, 400)
         self.assertIn('documento', r.data['detail'])
 
-    def test_producto_a_la_papelera_restaurar_y_definitivo(self):
+    def test_producto_a_la_papelera_y_restaurar_con_su_historial(self):
         self.login('laura', 'Cliente123')
+        self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
+        compra = self.client.post('/api/checkout/', CompraTests.ENVIO, format='json')
+        self.assertEqual(compra.status_code, 201, compra.data)
+        pedido = Pedido.objects.get(pk=compra.data['id'])
         self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
         self.login('admin', 'AdminGold123', admin=True)
         r = self.client.delete(f'/api/productos/{self.prod.id}/')
@@ -469,13 +473,18 @@ class ClientesYPapeleraTests(BaseAPITest):
         self.assertEqual(self.client.get(f'/api/productos/{self.prod.id}/').status_code, 404)
         self.assertEqual(len(self.client.get('/api/admin/papelera/').data['productos']), 1)
         self.assertEqual(self.prod.items_carrito.count(), 0)                   # salió de los carritos
-        r = self.client.post(f'/api/admin/papelera/productos/{self.prod.id}/')
+
+        url = f'/api/admin/papelera/productos/{self.prod.id}/'
+        self.assertEqual(self.client.delete(url).status_code, 405)
+        self.assertTrue(Producto.todos.filter(pk=self.prod.id, eliminado_en__isnull=False).exists())
+        item = pedido.items.get()
+        self.assertEqual(item.producto_id, self.prod.id)
+        self.assertEqual(item.referencia, self.prod.referencia)
+        self.assertEqual(item.precio, self.prod.precio)
+
+        r = self.client.post(url)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.client.get(f'/api/productos/{self.prod.id}/').status_code, 200)
-        self.client.delete(f'/api/productos/{self.prod.id}/')
-        r = self.client.delete(f'/api/admin/papelera/productos/{self.prod.id}/')
-        self.assertEqual(r.status_code, 200)
-        self.assertFalse(Producto.todos.filter(pk=self.prod.id).exists())     # ahora sí, físico
 
     def test_categoria_en_papelera_oculta_sus_productos(self):
         self.login('admin', 'AdminGold123', admin=True)
@@ -486,11 +495,12 @@ class ClientesYPapeleraTests(BaseAPITest):
         self.login('admin', 'AdminGold123', admin=True)
         r = self.client.post('/api/categorias/', {'nombre': 'pulseras'}, format='json')
         self.assertEqual(r.status_code, 400)                                   # el nombre está en la papelera
+        self.assertEqual(self.client.delete(f'/api/admin/papelera/categorias/{self.cat.id}/').status_code, 405)
         self.client.post(f'/api/admin/papelera/categorias/{self.cat.id}/')
         self.client.credentials()
         self.assertEqual(len(self.client.get('/api/productos/').data), 1)
 
-    def test_cliente_con_pedidos_no_se_borra_definitivamente(self):
+    def test_cliente_con_pedidos_se_puede_restaurar(self):
         self.login('laura', 'Cliente123')
         self.client.post('/api/carrito/', {'producto_id': self.prod.id}, format='json')
         self.client.post('/api/checkout/', CompraTests.ENVIO, format='json')
@@ -499,10 +509,10 @@ class ClientesYPapeleraTests(BaseAPITest):
         self.assertEqual(self.client.delete(f'/api/admin/clientes/{cliente.id}/').status_code, 200)
         self.cliente.refresh_from_db()
         self.assertFalse(self.cliente.is_active)                               # ya no puede entrar
-        r = self.client.delete(f'/api/admin/papelera/clientes/{cliente.id}/')
-        self.assertEqual(r.status_code, 400)
-        self.assertIn('pedido', r.data['detail'])
-        self.client.post(f'/api/admin/papelera/clientes/{cliente.id}/')
+        url = f'/api/admin/papelera/clientes/{cliente.id}/'
+        self.assertEqual(self.client.delete(url).status_code, 405)
+        self.assertTrue(cliente.pedidos.exists())
+        self.assertEqual(self.client.post(url).status_code, 200)
         self.cliente.refresh_from_db()
         self.assertTrue(self.cliente.is_active)
 

@@ -287,7 +287,7 @@ def cambiar_estado_pedido(pedido, nuevo_estado):
 
 
 # ---------------------------------------------------------------------------
-# Papelera: borrado lógico, restaurar y borrado definitivo
+# Papelera: borrado lógico y restauración
 # ---------------------------------------------------------------------------
 MODELOS_PAPELERA = {'productos': Producto, 'categorias': Categoria, 'clientes': Cliente}
 
@@ -318,27 +318,3 @@ def restaurar(objeto):
         objeto.usuario.is_active = True
         objeto.usuario.save(update_fields=['is_active'])
     return objeto
-
-
-@transaction.atomic
-def eliminar_definitivamente(objeto):
-    """Borrado FÍSICO: la fila desaparece de la base de datos. No se puede deshacer."""
-    if objeto.eliminado_en is None:
-        raise ErrorDeNegocio('Primero debe estar en la papelera.')
-    if isinstance(objeto, Cliente):
-        pedidos = objeto.pedidos.count()
-        if pedidos:
-            raise ErrorDeNegocio(
-                f'No se puede eliminar definitivamente: tiene {pedidos} pedido(s) en el historial de ventas. '
-                'Puede quedarse en la papelera.'
-            )
-        usuario = objeto.usuario
-        objeto.delete()
-        if usuario:
-            usuario.delete()          # su cuenta también (perfil, carrito y sesiones se borran con ella)
-        return
-    if isinstance(objeto, Producto) and objeto.imagen:
-        objeto.imagen.storage.delete(objeto.imagen.name)
-    # Producto: los pedidos antiguos conservan nombre y precio (FK SET NULL).
-    # Categoría: sus productos quedan "sin categoría" (FK SET NULL).
-    objeto.delete()

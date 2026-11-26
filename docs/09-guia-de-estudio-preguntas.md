@@ -63,7 +63,7 @@ El administrador usa *Registrar venta en el local*: escribe el documento (si ya 
 Dos personas pueden llamarse igual. La PK sigue siendo `id` (número que nunca cambia); el documento es una llave **candidata** protegida con un índice único `(tipo_documento, numero_documento)`.
 
 **¿Los borrados son lógicos o físicos?**
-Los dos. *Eliminar* hace un borrado **lógico** (`eliminado_en = fecha`) y lo manda a la **Papelera**; desde ahí se puede *Restaurar* o *Eliminar definitivamente* (borrado **físico**, `DELETE`). Así un error se puede deshacer, pero lo que de verdad se quiere borrar no se queda oculto para siempre. Un cliente con compras no se puede borrar físicamente.
+En el panel se usa **borrado lógico**. *Eliminar* marca el registro con `eliminado_en = fecha` y lo manda a la **Papelera**. Desde ahí, *Restaurar* lo devuelve a su listado. Esto conserva la relación entre un producto vendido y los pedidos que lo incluyen. Con el borrado físico anterior, el pedido conservaba sus importes y el detalle de compra, pero perdía la relación con el producto y su categoría.
 
 ## C. Seguridad y autenticación
 

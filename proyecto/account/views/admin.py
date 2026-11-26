@@ -239,7 +239,7 @@ class UsuarioAdminViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
 
 # ---------------------------------------------------------------------------
-# Papelera: lo eliminado (borrado lógico), para restaurar o borrar de verdad
+# Papelera: consultar y restaurar lo que se eliminó de forma lógica
 # ---------------------------------------------------------------------------
 @api_view(['GET'])
 @permission_classes([EsAdministrador])
@@ -260,12 +260,11 @@ def papelera_view(request):
     })
 
 
-@api_view(['POST', 'DELETE'])
+@api_view(['POST'])
 @permission_classes([EsAdministrador])
 def papelera_accion_view(request, tipo, objeto_id):
     """
     POST   /api/admin/papelera/{tipo}/{id}/  -> restaurar
-    DELETE /api/admin/papelera/{tipo}/{id}/  -> eliminar DEFINITIVAMENTE (no se puede deshacer)
     tipo = productos | categorias | clientes
     """
     modelo = services.MODELOS_PAPELERA.get(tipo)
@@ -274,12 +273,8 @@ def papelera_accion_view(request, tipo, objeto_id):
     objeto = modelo.todos.filter(pk=objeto_id, eliminado_en__isnull=False).first()
     if objeto is None:
         raise ErrorDeNegocio('No está en la papelera.', 404)
-    if request.method == 'POST':
-        services.restaurar(objeto)
-        return Response({'detail': f'"{objeto}" se restauró.'})
-    nombre = str(objeto)
-    services.eliminar_definitivamente(objeto)
-    return Response({'detail': f'"{nombre}" se eliminó definitivamente.'})
+    services.restaurar(objeto)
+    return Response({'detail': f'"{objeto}" se restauró.'})
 
 
 # ---------------------------------------------------------------------------

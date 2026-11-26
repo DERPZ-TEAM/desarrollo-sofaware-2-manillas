@@ -176,8 +176,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         return self._respuesta(serializer.save())
 
     def destroy(self, request, *args, **kwargs):
-        # Borrado LÓGICO: va a la papelera, desde donde se puede restaurar o
-        # eliminar definitivamente (ver views/admin.py -> papelera).
+        # Borrado lógico: el producto sale del catálogo y se puede restaurar.
         producto = self.get_object()
         services.mover_a_papelera(producto)
         return Response({'detail': f'"{producto.nombre}" se movió a la Papelera.'}, status=status.HTTP_200_OK)

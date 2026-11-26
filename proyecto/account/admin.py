@@ -39,6 +39,10 @@ class ProductoAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         return Producto.todos.all()
 
+    def has_delete_permission(self, request, obj=None):
+        # Conserva el vínculo con las ventas también desde el panel de soporte.
+        return False
+
 
 class ItemPedidoInline(admin.TabularInline):
     model = ItemPedido

@@ -235,7 +235,9 @@ Producto.objects.exclude(pk__in=vendidos)     # NOT IN (subconsulta)
 `python manage.py seed_goldbracelets` crea admin, cliente demo, 5 categorías y 6 productos de ejemplo **solo si no hay productos**. Se ejecuta en cada despliegue (`build.sh`) sin duplicar nada porque usa `get_or_create`.
 
 ## 12. `account/tests/test_api.py` — pruebas
-`python manage.py test account` crea una BD temporal, corre 52 pruebas y la borra. Cubren: registro, login por correo, flujos separados admin/cliente, logout con lista negra, recuperación de contraseña, permisos, CRUD con imagen, validaciones, filtros, stock agotado, ajuste al stock, checkout con descuento, rollback cuando falta stock, máquina de estados, devolución de stock al cancelar, reportes y alertas, clientes con documento (registro, enlace de clientes del local), Papelera (mover, restaurar, eliminar definitivamente y negarse si el cliente tiene compras).
+`python manage.py test account` crea una BD temporal, ejecuta las pruebas y la borra. La suite cubre autenticación, permisos, catálogo, stock, checkout, pedidos, reportes y clientes. En la Papelera comprueba que se puedan mover y restaurar registros, que la API responda `405 Method Not Allowed` al intentar borrarlos definitivamente y que el pedido conserve su vínculo con el producto archivado.
+
+El panel lista los registros archivados con `GET /api/admin/papelera/` y restaura con `POST /api/admin/papelera/{tipo}/{id}/`. El `DELETE` de la pantalla de Productos sigue moviendo el producto a la Papelera. El panel de soporte de Django también desactiva el borrado directo de productos.
 
 ## 13. Comandos útiles
 

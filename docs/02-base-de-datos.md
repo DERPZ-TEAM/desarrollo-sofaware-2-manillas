@@ -193,10 +193,28 @@ El esquema SQL completo y comentado está en [`esquema.sql`](esquema.sql).
 Cuando el administrador pulsa **Eliminar** en Productos, Categorías o Clientes, la fila **no se borra**: se llena la columna `eliminado_en` con la fecha y hora (**borrado lógico**). Así:
 
 - Deja de verse en la tienda y en las listas del panel (el *manager* `objects` de Django filtra `eliminado_en IS NULL`; `todos` ve también lo eliminado).
-- Aparece en **Admin → Papelera**, donde se puede **Restaurar** (vuelve `eliminado_en = NULL`) o **Eliminar definitivamente** (`DELETE` real = **borrado físico**).
+- Aparece en **Admin → Papelera**, donde **Restaurar** deja `eliminado_en = NULL`. La Papelera permite consultar y restaurar productos, categorías y clientes.
 - Un producto en la papelera se quita de los carritos; un cliente en la papelera deja su cuenta web desactivada (`is_active = false`) hasta restaurarlo.
-- **No se puede eliminar definitivamente** un cliente con pedidos (son registros contables: `PROTECT`). Un producto sí: el historial de ventas se conserva porque `item_pedido` guarda nombre y precio copiados.
+- Archivar un producto conserva su fila, su foto y el vínculo entre `item_pedido.producto_id` y `producto.id`. Así sigue identificado en el historial y en los reportes que filtran por categoría.
 - No se pueden crear dos categorías con el mismo nombre aunque una esté en la papelera: el sistema pide restaurarla.
+
+### Qué ocurría con el borrado definitivo
+
+La API anterior hacía un borrado físico de la fila en `producto` e intentaba eliminar su foto del almacenamiento configurado. Al borrar con Django, `SET_NULL` dejaba `item_pedido.producto_id` vacío. El pedido, sus totales y sus líneas conservaban el nombre, la referencia registrada, el precio y la cantidad de la compra. La venta seguía en el reporte general, pero dejaba de salir al filtrar por la categoría del producto. Una cancelación posterior tampoco podía devolver stock a un producto que ya no existía.
+
+Ahora el panel usa exclusivamente el borrado lógico y la restauración. Esta corrección no necesita migraciones ni recupera por sí sola filas borradas anteriormente.
+
+### Cómo comprobar el estado del reloj de la demostración
+
+En el proyecto de Supabase que usa la API de producción, esta consulta de solo lectura busca el reloj por su slug:
+
+```sql
+SELECT id, slug, referencia, eliminado_en
+FROM public.producto
+WHERE slug = 'reloj-cuero';
+```
+
+Una fila con fecha en `eliminado_en` indica que el reloj está en la Papelera. Una fila con ese campo vacío indica que está fuera de la Papelera. Si la consulta no devuelve filas, el reloj está ausente con ese slug en esa base. La ausencia por sí sola no prueba cuándo ni cómo se borró.
 
 ## 4.2 Referencias de producto (SKU)
 
